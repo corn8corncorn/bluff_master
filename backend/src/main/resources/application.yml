@@ -1,13 +1,14 @@
 spring:
   application:
     name: bluff-master-backend
-  
+
   datasource:
-    url: jdbc:mysql://localhost:3306/bluff_master?useSSL=false&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    # url: jdbc:mysql://localhost:3306/bluff_master?useSSL=false&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    url: jdbc:mysql://localhost:3306/bluff_master?useSSL=false&serverTimezone=Asia/Taipei&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:password}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -16,7 +17,7 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
-  
+
   redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
@@ -35,7 +36,7 @@ server:
 
 # Storage Configuration
 storage:
-  type: ${STORAGE_TYPE:local}  # local 或 gcp
+  type: ${STORAGE_TYPE:local} # local 或 gcp
 
 # GCP Storage Configuration (僅在 storage.type=gcp 時需要)
 gcp:
@@ -48,16 +49,15 @@ gcp:
 game:
   max-players: 10
   min-players: 4
-  max-image-size: 5242880  # 5MB in bytes
+  max-image-size: 5242880 # 5MB in bytes
   image-compression:
     min-width: 720
     max-width: 1080
-  voting-timeout: 10  # seconds
-  room-timeout: 10800  # 3 hours in seconds
+  voting-timeout: 10 # seconds
+  room-timeout: 10800 # 3 hours in seconds
   fake-image-url: ${FAKE_IMAGE_URL:https://picsum.photos/800/600}
 
 logging:
   level:
     com.bluffmaster: DEBUG
     org.springframework.web: INFO
-

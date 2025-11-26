@@ -105,7 +105,7 @@ public class RoomService {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("玩家不存在"));
         
-        player.setReady(true);
+        player.setIsReady(true);
         playerRepository.save(player);
     }
 

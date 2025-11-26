@@ -162,7 +162,7 @@ const canReady = computed(() => {
 onMounted(async () => {
   const roomId = route.params.roomId
   await gameStore.fetchRoom(roomId)
-  gameStore.connectWebSocket(roomId, currentPlayer.value?.id)
+  await gameStore.connectWebSocket(roomId, currentPlayer.value?.id)
 })
 
 onUnmounted(() => {

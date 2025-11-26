@@ -19,9 +19,13 @@ public class ImageController {
     @PostMapping("/players/{playerId}/upload")
     public ResponseEntity<List<String>> uploadImages(
             @PathVariable String playerId,
-            @RequestParam("files") List<MultipartFile> files) throws IOException {
-        List<String> imageUrls = imageService.uploadImages(playerId, files);
-        return ResponseEntity.ok(imageUrls);
+            @RequestParam("files") List<MultipartFile> files) {
+        try {
+            List<String> imageUrls = imageService.uploadImages(playerId, files);
+            return ResponseEntity.ok(imageUrls);
+        } catch (Exception e) {
+            throw new RuntimeException("上傳圖片失敗: " + e.getMessage(), e);
+        }
     }
 
     @DeleteMapping("/players/{playerId}")

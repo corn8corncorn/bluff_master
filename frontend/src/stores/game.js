@@ -84,8 +84,8 @@ export const useGameStore = defineStore('game', () => {
     return response.data
   }
 
-  function connectWebSocket(roomId, playerId) {
-    connection.value = websocket.connect(roomId, playerId, {
+  async function connectWebSocket(roomId, playerId) {
+    connection.value = await websocket.connect(roomId, playerId, {
       onRoomUpdate: (updatedRoom) => {
         room.value = updatedRoom
         if (currentPlayer.value) {

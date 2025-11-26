@@ -1,49 +1,72 @@
 import SockJS from 'sockjs-client'
-import { Stomp } from 'stompjs'
 
 let stompClient = null
+let Stomp = null
 
-function connect(roomId, playerId, callbacks) {
-  const socket = new SockJS('/ws')
-  stompClient = Stomp.over(socket)
-  
-  stompClient.connect({}, () => {
-    console.log('WebSocket 連接成功')
+// 載入 STOMP（使用動態導入處理 CommonJS 模組）
+async function loadStomp() {
+  if (!Stomp) {
+    try {
+      const stompModule = await import('stompjs')
+      Stomp = stompModule.default || stompModule.Stomp || stompModule
+      if (!Stomp || !Stomp.over) {
+        throw new Error('STOMP 未正確導出')
+      }
+    } catch (error) {
+      console.error('載入 STOMP 失敗:', error)
+      throw error
+    }
+  }
+  return Stomp
+}
 
-    // 訂閱房間更新
-    stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
-      const room = JSON.parse(message.body)
-      callbacks.onRoomUpdate?.(room)
+async function connect(roomId, playerId, callbacks) {
+  try {
+    const StompLib = await loadStomp()
+    const socket = new SockJS('/api/ws')
+    stompClient = StompLib.over(socket)
+    
+    stompClient.connect({}, () => {
+      console.log('WebSocket 連接成功')
+
+      // 訂閱房間更新
+      stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+        const room = JSON.parse(message.body)
+        callbacks.onRoomUpdate?.(room)
+      })
+
+      // 訂閱回合開始
+      stompClient.subscribe(`/topic/room/${roomId}/round`, (message) => {
+        const round = JSON.parse(message.body)
+        callbacks.onRoundStart?.(round)
+      })
+
+      // 訂閱投票更新
+      stompClient.subscribe(`/topic/room/${roomId}/vote`, (message) => {
+        const voteStatus = JSON.parse(message.body)
+        callbacks.onVoteUpdate?.(voteStatus)
+      })
+
+      // 訂閱回合結果
+      stompClient.subscribe(`/topic/room/${roomId}/round-result`, (message) => {
+        const round = JSON.parse(message.body)
+        callbacks.onRoundResult?.(round)
+      })
+
+      // 訂閱玩家斷線
+      stompClient.subscribe(`/topic/room/${roomId}/player-disconnect`, (message) => {
+        const playerId = message.body
+        callbacks.onPlayerDisconnect?.(playerId)
+      })
+    }, (error) => {
+      console.error('WebSocket 連接失敗:', error)
     })
-
-    // 訂閱回合開始
-    stompClient.subscribe(`/topic/room/${roomId}/round`, (message) => {
-      const round = JSON.parse(message.body)
-      callbacks.onRoundStart?.(round)
-    })
-
-    // 訂閱投票更新
-    stompClient.subscribe(`/topic/room/${roomId}/vote`, (message) => {
-      const voteStatus = JSON.parse(message.body)
-      callbacks.onVoteUpdate?.(voteStatus)
-    })
-
-    // 訂閱回合結果
-    stompClient.subscribe(`/topic/room/${roomId}/round-result`, (message) => {
-      const round = JSON.parse(message.body)
-      callbacks.onRoundResult?.(round)
-    })
-
-    // 訂閱玩家斷線
-    stompClient.subscribe(`/topic/room/${roomId}/player-disconnect`, (message) => {
-      const playerId = message.body
-      callbacks.onPlayerDisconnect?.(playerId)
-    })
-  }, (error) => {
-    console.error('WebSocket 連接失敗:', error)
-  })
-
-  return stompClient
+    
+    return stompClient
+  } catch (error) {
+    console.error('WebSocket 初始化失敗:', error)
+    return null
+  }
 }
 
 function disconnect(stompClient) {

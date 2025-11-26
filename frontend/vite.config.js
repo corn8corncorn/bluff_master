@@ -4,10 +4,16 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    global: 'globalThis',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  optimizeDeps: {
+    include: ['sockjs-client', 'stompjs']
   },
   server: {
     port: 3000,
@@ -16,7 +22,7 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true
       },
-      '/ws': {
+      '/api/ws': {
         target: 'http://localhost:8080',
         ws: true,
         changeOrigin: true
