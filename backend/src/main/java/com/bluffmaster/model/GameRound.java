@@ -33,16 +33,16 @@ public class GameRound {
 
     @ElementCollection
     @CollectionTable(name = "round_images", joinColumns = @JoinColumn(name = "round_id"))
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private List<String> imageUrls;  // 包含 3 真圖 + 1 假圖
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String fakeImageUrl;  // 假圖 URL
 
     @ElementCollection
     @CollectionTable(name = "round_votes", joinColumns = @JoinColumn(name = "round_id"))
     @MapKeyColumn(name = "player_id")
-    @Column(name = "voted_image_url")
+    @Column(name = "voted_image_url", columnDefinition = "TEXT")
     private Map<String, String> votes;  // playerId -> imageUrl
 
     @Column(nullable = false)

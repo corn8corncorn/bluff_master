@@ -36,3 +36,7 @@ Thumbs.db
 build/
 out/
 
+# Uploads
+uploads/
+backend/uploads/
+

@@ -17,7 +17,12 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -43,6 +48,9 @@ public class ImageService {
     @Value("${storage.type:local}")
     private String storageType;
 
+    @Value("${storage.upload-dir:./uploads}")
+    private String uploadDir;
+
     @Value("${game.max-image-size}")
     private long maxImageSize;
 
@@ -53,6 +61,22 @@ public class ImageService {
     private int maxWidth;
 
     private Storage storage;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        // 確保上傳目錄存在
+        if ("local".equals(storageType)) {
+            try {
+                Path uploadPath = Paths.get(uploadDir);
+                if (!Files.exists(uploadPath)) {
+                    Files.createDirectories(uploadPath);
+                    log.info("創建上傳目錄: {}", uploadPath.toAbsolutePath());
+                }
+            } catch (IOException e) {
+                log.error("無法創建上傳目錄: {}", uploadDir, e);
+            }
+        }
+    }
 
     private Storage getStorage() {
         if (storage == null && bucketName != null && !bucketName.isEmpty()) {
@@ -75,39 +99,66 @@ public class ImageService {
 
     @Transactional
     public List<String> uploadImages(String playerId, List<MultipartFile> files) throws IOException {
+        log.info("開始上傳圖片，玩家ID: {}, 文件數量: {}", playerId, files.size());
+        
         Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("玩家不存在"));
+                .orElseThrow(() -> {
+                    log.error("玩家不存在: {}", playerId);
+                    return new RuntimeException("玩家不存在");
+                });
+
+        // 檢查玩家是否已準備
+        if (player.getIsReady()) {
+            log.warn("玩家已準備，無法上傳圖片: {}", playerId);
+            throw new RuntimeException("已準備狀態下無法上傳圖片，請先取消準備");
+        }
 
         List<String> uploadedUrls = new ArrayList<>();
 
-        for (MultipartFile file : files) {
-            // 驗證文件大小
-            if (file.getSize() > maxImageSize) {
-                throw new RuntimeException("圖片大小超過 5MB 限制");
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            try {
+                log.info("處理第 {} 個文件: {}, 大小: {} bytes, 類型: {}", 
+                    i + 1, file.getOriginalFilename(), file.getSize(), file.getContentType());
+                
+                // 驗證文件大小
+                if (file.getSize() > maxImageSize) {
+                    log.error("圖片大小超過限制: {} bytes, 最大: {} bytes", file.getSize(), maxImageSize);
+                    throw new RuntimeException("圖片大小超過 5MB 限制");
+                }
+
+                // 驗證文件類型
+                String contentType = file.getContentType();
+                if (contentType == null || !contentType.startsWith("image/")) {
+                    log.error("不支援的文件類型: {}", contentType);
+                    throw new RuntimeException("只支援圖片格式");
+                }
+
+                // 壓縮圖片
+                log.debug("開始壓縮圖片: {}", file.getOriginalFilename());
+                byte[] compressedImage = compressImage(file);
+                log.debug("圖片壓縮完成，大小: {} bytes", compressedImage.length);
+
+                // 生成 UUID 檔名
+                String fileName = UUID.randomUUID().toString() + ".jpg";
+
+                // 上傳圖片（根據配置選擇儲存方式）
+                String imageUrl;
+                if ("gcp".equals(storageType) && bucketName != null && !bucketName.isEmpty()) {
+                    log.debug("使用 GCP 儲存");
+                    imageUrl = uploadToGCP(fileName, compressedImage);
+                } else {
+                    // 本地開發模式：使用 Base64 或本地文件系統
+                    log.debug("使用本地儲存");
+                    imageUrl = uploadToLocal(fileName, compressedImage);
+                }
+
+                uploadedUrls.add(imageUrl);
+                log.info("圖片上傳成功: {}", imageUrl);
+            } catch (Exception e) {
+                log.error("處理第 {} 個文件時發生錯誤: {}", i + 1, file.getOriginalFilename(), e);
+                throw new RuntimeException("處理圖片失敗: " + e.getMessage(), e);
             }
-
-            // 驗證文件類型
-            String contentType = file.getContentType();
-            if (contentType == null || !contentType.startsWith("image/")) {
-                throw new RuntimeException("只支援圖片格式");
-            }
-
-            // 壓縮圖片
-            byte[] compressedImage = compressImage(file);
-
-            // 生成 UUID 檔名
-            String fileName = UUID.randomUUID().toString() + ".jpg";
-
-            // 上傳圖片（根據配置選擇儲存方式）
-            String imageUrl;
-            if ("gcp".equals(storageType) && bucketName != null && !bucketName.isEmpty()) {
-                imageUrl = uploadToGCP(fileName, compressedImage);
-            } else {
-                // 本地開發模式：使用 Base64 或本地文件系統
-                imageUrl = uploadToLocal(fileName, compressedImage);
-            }
-
-            uploadedUrls.add(imageUrl);
         }
 
         // 更新玩家圖片列表
@@ -116,6 +167,7 @@ public class ImageService {
         }
         player.getImageUrls().addAll(uploadedUrls);
         playerRepository.save(player);
+        log.info("玩家圖片列表已更新，總共 {} 張圖片", player.getImageUrls().size());
 
         return uploadedUrls;
     }
@@ -127,7 +179,7 @@ public class ImageService {
 
         if (player.getImageUrls() != null) {
             for (String imageUrl : player.getImageUrls()) {
-                if (imageUrl.startsWith("data:image") || imageUrl.startsWith("/uploads/")) {
+                if (imageUrl.startsWith("data:image") || imageUrl.startsWith("/api/images/") || imageUrl.startsWith("/uploads/")) {
                     deleteFromLocal(imageUrl);
                 } else if (imageUrl.contains("storage.googleapis.com")) {
                     deleteFromGCP(imageUrl);
@@ -136,6 +188,34 @@ public class ImageService {
             player.getImageUrls().clear();
             playerRepository.save(player);
         }
+    }
+
+    @Transactional
+    public void deletePlayerImage(String playerId, String imageUrl) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("玩家不存在"));
+
+        // 檢查玩家是否已準備
+        if (player.getIsReady()) {
+            log.warn("玩家已準備，無法刪除圖片: {}", playerId);
+            throw new RuntimeException("已準備狀態下無法刪除圖片，請先取消準備");
+        }
+
+        if (player.getImageUrls() == null || !player.getImageUrls().contains(imageUrl)) {
+            throw new RuntimeException("圖片不存在");
+        }
+
+        // 刪除文件
+        if (imageUrl.startsWith("data:image") || imageUrl.startsWith("/api/images/") || imageUrl.startsWith("/uploads/")) {
+            deleteFromLocal(imageUrl);
+        } else if (imageUrl.contains("storage.googleapis.com")) {
+            deleteFromGCP(imageUrl);
+        }
+
+        // 從列表中移除
+        player.getImageUrls().remove(imageUrl);
+        playerRepository.save(player);
+        log.info("已刪除玩家圖片: playerId={}, imageUrl={}", playerId, imageUrl);
     }
 
     @Transactional
@@ -156,37 +236,62 @@ public class ImageService {
     }
 
     private byte[] compressImage(MultipartFile file) throws IOException {
-        BufferedImage originalImage = ImageIO.read(file.getInputStream());
-        if (originalImage == null) {
-            throw new RuntimeException("無法讀取圖片");
+        try {
+            BufferedImage originalImage = ImageIO.read(file.getInputStream());
+            if (originalImage == null) {
+                log.error("無法讀取圖片，文件類型: {}", file.getContentType());
+                throw new RuntimeException("無法讀取圖片，請確認文件格式正確");
+            }
+
+            int originalWidth = originalImage.getWidth();
+            int originalHeight = originalImage.getHeight();
+            log.debug("原始圖片尺寸: {}x{}", originalWidth, originalHeight);
+
+            // 計算新尺寸
+            int newWidth = originalWidth;
+            int newHeight = originalHeight;
+
+            if (originalWidth > maxWidth) {
+                newWidth = maxWidth;
+                newHeight = (int) ((double) originalHeight * maxWidth / originalWidth);
+                log.debug("圖片需要縮小到: {}x{}", newWidth, newHeight);
+            } else if (originalWidth < minWidth) {
+                newWidth = minWidth;
+                newHeight = (int) ((double) originalHeight * minWidth / originalWidth);
+                log.debug("圖片需要放大到: {}x{}", newWidth, newHeight);
+            }
+
+            // 調整圖片大小
+            java.awt.Image scaledImage = originalImage.getScaledInstance(
+                    newWidth, newHeight, java.awt.Image.SCALE_SMOOTH);
+            BufferedImage bufferedScaledImage = new BufferedImage(
+                    newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+            
+            java.awt.Graphics2D g2d = bufferedScaledImage.createGraphics();
+            try {
+                g2d.drawImage(scaledImage, 0, 0, null);
+            } finally {
+                g2d.dispose();
+            }
+
+            // 轉換為 byte array
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            boolean written = ImageIO.write(bufferedScaledImage, "jpg", baos);
+            if (!written) {
+                log.error("無法將圖片寫入輸出流");
+                throw new RuntimeException("圖片處理失敗");
+            }
+            
+            byte[] result = baos.toByteArray();
+            log.debug("圖片壓縮完成，輸出大小: {} bytes", result.length);
+            return result;
+        } catch (IOException e) {
+            log.error("壓縮圖片時發生 IO 錯誤", e);
+            throw new RuntimeException("圖片處理失敗: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("壓縮圖片時發生未知錯誤", e);
+            throw new RuntimeException("圖片處理失敗: " + e.getMessage(), e);
         }
-
-        int originalWidth = originalImage.getWidth();
-        int originalHeight = originalImage.getHeight();
-
-        // 計算新尺寸
-        int newWidth = originalWidth;
-        int newHeight = originalHeight;
-
-        if (originalWidth > maxWidth) {
-            newWidth = maxWidth;
-            newHeight = (int) ((double) originalHeight * maxWidth / originalWidth);
-        } else if (originalWidth < minWidth) {
-            newWidth = minWidth;
-            newHeight = (int) ((double) originalHeight * minWidth / originalWidth);
-        }
-
-        // 調整圖片大小
-        java.awt.Image scaledImage = originalImage.getScaledInstance(
-                newWidth, newHeight, java.awt.Image.SCALE_SMOOTH);
-        BufferedImage bufferedScaledImage = new BufferedImage(
-                newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
-        bufferedScaledImage.getGraphics().drawImage(scaledImage, 0, 0, null);
-
-        // 轉換為 byte array
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(bufferedScaledImage, "jpg", baos);
-        return baos.toByteArray();
     }
 
     private String uploadToGCP(String fileName, byte[] imageData) {
@@ -208,10 +313,21 @@ public class ImageService {
 
     private String uploadToLocal(String fileName, byte[] imageData) {
         try {
-            // 本地開發模式：使用 Base64 編碼直接返回
-            // 這樣可以避免需要配置文件系統路徑
-            String base64Image = Base64.getEncoder().encodeToString(imageData);
-            return "data:image/jpeg;base64," + base64Image;
+            // 本地開發模式：保存到文件系統
+            Path uploadPath = Paths.get(uploadDir);
+            Path filePath = uploadPath.resolve(fileName);
+            
+            // 確保目錄存在
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+            
+            // 寫入文件
+            Files.write(filePath, imageData);
+            log.info("圖片已保存到: {}", filePath.toAbsolutePath());
+            
+            // 返回相對路徑 URL（前端可以通過 /api/images/ 訪問）
+            return "/api/images/" + fileName;
         } catch (Exception e) {
             log.error("本地儲存圖片失敗", e);
             throw new RuntimeException("上傳圖片失敗", e);
@@ -219,9 +335,34 @@ public class ImageService {
     }
 
     private void deleteFromLocal(String imageUrl) {
-        // Base64 圖片不需要刪除，因為是內嵌在 URL 中
-        // 如果是文件系統路徑，可以在這裡實現刪除邏輯
-        log.debug("刪除本地圖片: " + imageUrl);
+        try {
+            // 從 URL 中提取文件名
+            // 支持格式: /api/images/{fileName} 或 /uploads/{fileName} 或 data:image/jpeg;base64,...
+            String fileName;
+            if (imageUrl.startsWith("data:image")) {
+                // Base64 格式，無法刪除文件（舊格式，保留兼容性）
+                log.warn("嘗試刪除 Base64 格式圖片，跳過文件刪除: {}", imageUrl);
+                return;
+            } else if (imageUrl.startsWith("/api/images/")) {
+                fileName = imageUrl.substring("/api/images/".length());
+            } else if (imageUrl.startsWith("/uploads/")) {
+                fileName = imageUrl.substring("/uploads/".length());
+            } else {
+                fileName = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+            }
+            
+            Path filePath = Paths.get(uploadDir, fileName);
+            
+            if (Files.exists(filePath)) {
+                Files.delete(filePath);
+                log.info("已刪除本地圖片: {}", filePath.toAbsolutePath());
+            } else {
+                log.warn("嘗試刪除不存在的圖片文件: {}", filePath.toAbsolutePath());
+            }
+        } catch (Exception e) {
+            log.error("刪除本地圖片失敗: " + imageUrl, e);
+            throw new RuntimeException("刪除圖片失敗: " + e.getMessage(), e);
+        }
     }
 
     private void deleteFromGCP(String imageUrl) {

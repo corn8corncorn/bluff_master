@@ -38,7 +38,7 @@ public class Player {
 
     @ElementCollection
     @CollectionTable(name = "player_images", joinColumns = @JoinColumn(name = "player_id"))
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private List<String> imageUrls;
 
     @Column(nullable = false)

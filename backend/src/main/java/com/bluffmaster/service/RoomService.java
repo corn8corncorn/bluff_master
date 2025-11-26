@@ -110,6 +110,15 @@ public class RoomService {
     }
 
     @Transactional
+    public void playerCancelReady(String playerId) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("玩家不存在"));
+        
+        player.setIsReady(false);
+        playerRepository.save(player);
+    }
+
+    @Transactional
     public void updatePlayerNickname(String playerId, String newNickname) {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("玩家不存在"));

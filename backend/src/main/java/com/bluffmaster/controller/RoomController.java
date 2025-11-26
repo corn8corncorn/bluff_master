@@ -46,6 +46,14 @@ public class RoomController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/{roomId}/players/{playerId}/cancel-ready")
+    public ResponseEntity<Void> playerCancelReady(
+            @PathVariable String roomId,
+            @PathVariable String playerId) {
+        roomService.playerCancelReady(playerId);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/{roomId}/players/{playerId}/nickname")
     public ResponseEntity<Void> updateNickname(
             @PathVariable String roomId,

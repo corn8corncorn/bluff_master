@@ -37,6 +37,7 @@ server:
 # Storage Configuration
 storage:
   type: ${STORAGE_TYPE:local} # local 或 gcp
+  upload-dir: ${STORAGE_UPLOAD_DIR:./uploads} # 圖片上傳目錄（僅 local 模式使用）
 
 # GCP Storage Configuration (僅在 storage.type=gcp 時需要)
 gcp:

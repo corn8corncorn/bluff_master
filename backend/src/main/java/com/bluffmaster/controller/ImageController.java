@@ -6,7 +6,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -24,6 +23,7 @@ public class ImageController {
             List<String> imageUrls = imageService.uploadImages(playerId, files);
             return ResponseEntity.ok(imageUrls);
         } catch (Exception e) {
+            // 讓 GlobalExceptionHandler 處理異常，這樣可以返回更詳細的錯誤信息
             throw new RuntimeException("上傳圖片失敗: " + e.getMessage(), e);
         }
     }
@@ -32,6 +32,18 @@ public class ImageController {
     public ResponseEntity<Void> deletePlayerImages(@PathVariable String playerId) {
         imageService.deletePlayerImages(playerId);
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/players/{playerId}/images")
+    public ResponseEntity<Void> deletePlayerImage(
+            @PathVariable String playerId,
+            @RequestParam("imageUrl") String imageUrl) {
+        try {
+            imageService.deletePlayerImage(playerId, imageUrl);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            throw new RuntimeException("刪除圖片失敗: " + e.getMessage(), e);
+        }
     }
 
     @DeleteMapping("/rooms/{roomId}")

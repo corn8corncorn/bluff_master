@@ -35,7 +35,8 @@ server:
 
 # Storage Configuration
 storage:
-  type: local # 本地開發使用 local 模式（Base64 編碼）
+  type: local # 本地開發使用 local 模式（文件系統）
+  upload-dir: ${STORAGE_UPLOAD_DIR:./uploads} # 圖片上傳目錄
 
 # GCP Storage Configuration (可選，本地開發可暫時跳過)
 gcp:
