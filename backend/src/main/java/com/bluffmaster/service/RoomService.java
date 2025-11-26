@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,7 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final PlayerRepository playerRepository;
+    private final ImageService imageService;
     private final SecureRandom random = new SecureRandom();
 
     @Transactional
@@ -38,6 +40,7 @@ public class RoomService {
                 .totalRounds(request.getGameMode() == Room.GameMode.NORMAL 
                         ? request.getMaxPlayers() 
                         : Math.min(5, request.getMaxPlayers()))
+                .playerIds(new ArrayList<>()) // 明確初始化 playerIds
                 .build();
         
         room = roomRepository.save(room);
@@ -97,7 +100,13 @@ public class RoomService {
         room.getPlayerIds().add(player.getId());
         room = roomRepository.save(room);
 
-        return convertToDTO(room, null);
+        RoomDTO roomDTO = convertToDTO(room, null);
+        
+        // 通過 WebSocket 廣播房間更新（通知其他玩家有新玩家加入）
+        // 注意：這裡需要注入 SimpMessagingTemplate，但為了避免循環依賴，
+        // 我們在 Controller 層處理 WebSocket 廣播
+        
+        return roomDTO;
     }
 
     @Transactional
@@ -171,6 +180,84 @@ public class RoomService {
     }
 
     @Transactional
+    public RoomDTO leaveRoom(String playerId) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("玩家不存在"));
+
+        Room room = roomRepository.findById(player.getRoomId())
+                .orElseThrow(() -> new RuntimeException("房間不存在"));
+
+        // 如果遊戲已開始，不允許退出（或可以實現斷線處理）
+        if (room.getStatus() == Room.RoomStatus.PLAYING) {
+            throw new RuntimeException("遊戲進行中，無法退出房間");
+        }
+
+        boolean isHost = player.getIsHost();
+        
+        // 移除玩家
+        room.getPlayerIds().remove(playerId);
+        
+        // 如果房主退出，轉移房主權限給下一個玩家（按加入順序，即 createdAt 最早的）
+        if (isHost && !room.getPlayerIds().isEmpty()) {
+            // 先獲取剩餘玩家（不包含即將刪除的玩家）
+            List<Player> remainingPlayers = playerRepository.findByRoomId(room.getId()).stream()
+                    .filter(p -> !p.getId().equals(playerId))
+                    .collect(Collectors.toList());
+            
+            if (!remainingPlayers.isEmpty()) {
+                // 先將所有剩餘玩家的 isHost 設為 false（確保只有一個房主）
+                for (Player p : remainingPlayers) {
+                    if (p.getIsHost()) {
+                        p.setIsHost(false);
+                        playerRepository.save(p);
+                    }
+                }
+                
+                // 按創建時間排序，最早的成為新房主
+                Player newHost = remainingPlayers.stream()
+                        .sorted((p1, p2) -> p1.getCreatedAt().compareTo(p2.getCreatedAt()))
+                        .findFirst()
+                        .orElse(null);
+                
+                if (newHost != null) {
+                    newHost.setIsHost(true);
+                    playerRepository.save(newHost);
+                    log.info("房主 {} 退出，轉移房主權限給 {}", player.getNickname(), newHost.getNickname());
+                }
+            }
+        }
+
+        // 刪除玩家的圖片
+        try {
+            imageService.deletePlayerImages(playerId);
+        } catch (Exception e) {
+            log.warn("刪除玩家圖片時發生錯誤: {}", e.getMessage());
+            // 不阻止退出流程，繼續執行
+        }
+
+        // 保存房間
+        roomRepository.save(room);
+        
+        // 刪除玩家
+        playerRepository.delete(player);
+
+        // 如果房間沒有玩家了，保留房間以供後續加入
+        if (room.getPlayerIds().isEmpty()) {
+            log.info("房間 {} 沒有玩家了，保留房間以供後續加入", room.getId());
+        }
+
+        // 返回更新後的房間資訊（用於廣播）
+        String newHostId = room.getPlayerIds().isEmpty() ? null :
+                playerRepository.findByRoomId(room.getId()).stream()
+                        .filter(Player::getIsHost)
+                        .findFirst()
+                        .map(Player::getId)
+                        .orElse(null);
+        
+        return convertToDTO(room, newHostId);
+    }
+
+    @Transactional
     public void startGame(String hostId) {
         Player host = playerRepository.findById(hostId)
                 .orElseThrow(() -> new RuntimeException("房主不存在"));
@@ -188,8 +275,8 @@ public class RoomService {
 
         List<Player> players = playerRepository.findByRoomId(room.getId());
         
-        if (players.size() < 4) {
-            throw new RuntimeException("至少需要 4 人才能開始遊戲");
+        if (players.size() < 2) {
+            throw new RuntimeException("至少需要 2 人才能開始遊戲");
         }
 
         // 檢查所有玩家是否都準備好

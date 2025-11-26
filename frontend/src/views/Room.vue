@@ -32,8 +32,8 @@
             :key="player.id"
             class="p-4 border rounded-lg"
             :class="{
-              'border-purple-500 bg-purple-50': player.isHost,
-              'border-gray-200': !player.isHost,
+              'border-purple-500 bg-purple-50': currentPlayer?.id === player.id,
+              'border-gray-200': currentPlayer?.id !== player.id,
               'opacity-50': !player.isOnline
             }"
           >
@@ -62,7 +62,7 @@
       </div>
 
       <!-- 圖片上傳 -->
-      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+      <div v-if="currentPlayer" class="bg-white rounded-2xl shadow-xl p-6 mb-6">
         <h3 class="text-xl font-bold text-gray-800 mb-4">上傳圖片</h3>
         <div class="mb-4">
           <div class="text-sm text-gray-600 mb-2">
@@ -114,34 +114,71 @@
       <!-- 操作按鈕 -->
       <div class="bg-white rounded-2xl shadow-xl p-6">
         <div class="space-y-4">
-          <button
-            v-if="!currentPlayer?.isReady"
-            @click="handleReady"
-            :disabled="!canReady"
-            class="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            準備
-          </button>
-
-          <button
-            v-if="currentPlayer?.isReady"
-            @click="handleCancelReady"
-            class="w-full px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600"
-          >
-            取消準備
-          </button>
-
-          <button
-            v-if="isHost && canStartGame"
-            @click="handleStartGame"
-            class="w-full px-6 py-3 bg-purple-500 text-white rounded-lg font-semibold text-lg hover:bg-purple-600"
-          >
-            開始遊戲
-          </button>
-
-          <div v-if="isHost && !canStartGame && allPlayersReady" class="text-center text-sm text-gray-500">
-            等待所有玩家準備完成
+          <!-- 如果找不到玩家，顯示重新加入表單 -->
+          <div v-if="!currentPlayer && room" class="space-y-4">
+            <div class="text-center text-gray-600 mb-4">
+              <p class="mb-2">無法識別您的身份，請重新加入房間</p>
+              <p class="text-sm text-gray-500">房間代碼：{{ room.roomCode }}</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">輸入您的暱稱</label>
+              <input
+                v-model="rejoinNickname"
+                type="text"
+                maxlength="20"
+                @keyup.enter="handleRejoin"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="輸入您的暱稱"
+              />
+            </div>
+            <button
+              @click="handleRejoin"
+              :disabled="!rejoinNickname.trim() || rejoining"
+              class="w-full px-6 py-3 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {{ rejoining ? '加入中...' : '重新加入' }}
+            </button>
           </div>
+
+          <!-- 正常操作按鈕 -->
+          <template v-else>
+            <button
+              v-if="!currentPlayer?.isReady"
+              @click="handleReady"
+              :disabled="!canReady"
+              class="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              準備
+            </button>
+
+            <button
+              v-if="currentPlayer?.isReady"
+              @click="handleCancelReady"
+              class="w-full px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600"
+            >
+              取消準備
+            </button>
+
+            <button
+              v-if="isHost && canStartGame"
+              @click="handleStartGame"
+              class="w-full px-6 py-3 bg-purple-500 text-white rounded-lg font-semibold text-lg hover:bg-purple-600"
+            >
+              開始遊戲
+            </button>
+
+            <div v-if="isHost && !canStartGame && allPlayersReady" class="text-center text-sm text-gray-500">
+              等待所有玩家準備完成
+            </div>
+
+            <!-- 退出房間按鈕 -->
+            <button
+              @click="handleLeave"
+              class="w-full px-6 py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 mt-4"
+            >
+              退出房間
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -149,7 +186,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { useNotification } from '../composables/useNotification'
@@ -161,12 +198,35 @@ const { error: showError, success: showSuccess } = useNotification()
 
 const fileInput = ref(null)
 const uploading = ref(false)
+const rejoinNickname = ref('')
+const rejoining = ref(false)
 
 const room = computed(() => gameStore.room)
 const currentPlayer = computed(() => gameStore.currentPlayer)
 const isHost = computed(() => gameStore.isHost)
 const allPlayersReady = computed(() => gameStore.allPlayersReady)
 const canStartGame = computed(() => gameStore.canStartGame)
+
+// 監聽房間更新，檢測新玩家加入
+watch(() => gameStore.room, (newRoom, oldRoom) => {
+  // 只在有舊房間資料時才檢測新玩家（避免首次載入時觸發）
+  if (newRoom && oldRoom && oldRoom.players) {
+    const oldPlayerIds = oldRoom.players.map(p => p.id) || []
+    const newPlayerIds = newRoom.players?.map(p => p.id) || []
+    
+    // 找出新加入的玩家
+    const newPlayerIdsList = newPlayerIds.filter(id => !oldPlayerIds.includes(id))
+    if (newPlayerIdsList.length > 0 && newRoom.players) {
+      const newPlayers = newRoom.players.filter(p => newPlayerIdsList.includes(p.id))
+      newPlayers.forEach(player => {
+        // 不顯示自己加入的通知
+        if (currentPlayer.value && player.id !== currentPlayer.value.id) {
+          showSuccess(`${player.nickname} 已加入房間`)
+        }
+      })
+    }
+  }
+}, { deep: true })
 
 const requiredImages = computed(() => {
   if (!room.value) return 0
@@ -182,7 +242,11 @@ const canReady = computed(() => {
 onMounted(async () => {
   const roomId = route.params.roomId
   await gameStore.fetchRoom(roomId)
-  await gameStore.connectWebSocket(roomId, currentPlayer.value?.id)
+  
+  // 如果找不到玩家，不連接 WebSocket
+  if (currentPlayer.value) {
+    await gameStore.connectWebSocket(roomId, currentPlayer.value.id)
+  }
 })
 
 onUnmounted(() => {
@@ -195,7 +259,7 @@ async function handleFileSelect(event) {
 
   // 檢查當前玩家是否存在
   if (!currentPlayer.value || !currentPlayer.value.id) {
-    showError('玩家資訊未載入，請重新整理頁面')
+    showError('玩家資訊未載入，請重新加入房間')
     event.target.value = ''
     return
   }
@@ -278,9 +342,28 @@ async function handleStartGame() {
   }
 }
 
+async function handleLeave() {
+  if (!room.value || !room.value.id) {
+    router.push('/')
+    return
+  }
+
+  try {
+    await gameStore.leaveRoom(room.value.id)
+    showSuccess('已退出房間')
+    router.push('/')
+  } catch (error) {
+    console.error('退出房間錯誤:', error)
+    const errorMessage = error.response?.data?.message || error.message || '退出房間失敗'
+    showError(errorMessage)
+    // 即使失敗也導航回首頁
+    router.push('/')
+  }
+}
+
 async function handleDeleteImage(imageUrl) {
   if (!currentPlayer.value || !currentPlayer.value.id) {
-    showError('玩家資訊未載入，請重新整理頁面')
+    showError('玩家資訊未載入，請重新加入房間')
     return
   }
 
@@ -299,6 +382,27 @@ async function handleDeleteImage(imageUrl) {
     console.error('刪除圖片錯誤:', error)
     const errorMessage = error.response?.data?.message || error.message || '刪除圖片失敗'
     showError(errorMessage)
+  }
+}
+
+async function handleRejoin() {
+  if (!rejoinNickname.value.trim() || !room.value) return
+
+  rejoining.value = true
+  try {
+    await gameStore.joinRoom(room.value.roomCode, rejoinNickname.value.trim())
+    // 重新獲取房間資訊
+    await gameStore.fetchRoom(room.value.id)
+    // 連接 WebSocket
+    await gameStore.connectWebSocket(room.value.id, currentPlayer.value?.id)
+    showSuccess('重新加入成功')
+    rejoinNickname.value = ''
+  } catch (error) {
+    console.error('重新加入錯誤:', error)
+    const errorMessage = error.response?.data?.message || error.message || '重新加入失敗'
+    showError(errorMessage)
+  } finally {
+    rejoining.value = false
   }
 }
 </script>
