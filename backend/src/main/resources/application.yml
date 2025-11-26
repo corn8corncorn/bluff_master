@@ -33,6 +33,15 @@ server:
   port: 8080
   servlet:
     context-path: /api
+    session:
+      cookie:
+        name: JSESSIONID
+        http-only: true
+        secure: false # 開發環境設為 false，生產環境應設為 true（HTTPS）
+        same-site: lax # 允許跨站請求攜帶 cookie
+        path: /api # 設置 cookie 路徑，確保只在 /api 路徑下有效
+      timeout: 30m # Session 過期時間：30 分鐘
+      tracking-modes: cookie # 明確使用 cookie 來追蹤 session
 
 # Storage Configuration
 storage:

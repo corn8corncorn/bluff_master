@@ -52,7 +52,7 @@
             v-model.number="maxPlayers"
             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
-            <option v-for="n in 7" :key="n + 3" :value="n + 3">{{ n + 3 }} 人</option>
+            <option v-for="n in 9" :key="n + 1" :value="n + 1">{{ n + 1 }} 人</option>
           </select>
         </div>
 
@@ -87,7 +87,7 @@ const gameStore = useGameStore()
 
 const nickname = ref('')
 const gameMode = ref('NORMAL')
-const maxPlayers = ref(6)
+const maxPlayers = ref(2) // 默認 2 人，方便測試
 const loading = ref(false)
 
 async function handleCreate() {

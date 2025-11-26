@@ -19,7 +19,7 @@ public class CreateRoomRequest {
     @NotNull(message = "遊戲模式不能為空")
     private Room.GameMode gameMode;
 
-    @Min(value = 4, message = "最少需要 4 人")
+    @Min(value = 2, message = "最少需要 2 人")
     @Max(value = 10, message = "最多 10 人")
     @NotNull(message = "人數不能為空")
     private Integer maxPlayers;
