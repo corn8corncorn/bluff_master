@@ -26,43 +26,47 @@ async function connect(roomId, playerId, callbacks) {
     const socket = new SockJS('/api/ws')
     stompClient = StompLib.over(socket)
     
-    stompClient.connect({}, () => {
-      console.log('WebSocket 連接成功')
+    return new Promise((resolve, reject) => {
+      stompClient.connect({}, () => {
+        console.log('WebSocket 連接成功')
 
-      // 訂閱房間更新
-      stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
-        const room = JSON.parse(message.body)
-        callbacks.onRoomUpdate?.(room)
-      })
+        // 訂閱房間更新
+        stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+          const room = JSON.parse(message.body)
+          callbacks.onRoomUpdate?.(room)
+        })
 
-      // 訂閱回合開始
-      stompClient.subscribe(`/topic/room/${roomId}/round`, (message) => {
-        const round = JSON.parse(message.body)
-        callbacks.onRoundStart?.(round)
-      })
+        // 訂閱回合開始
+        stompClient.subscribe(`/topic/room/${roomId}/round`, (message) => {
+          const round = JSON.parse(message.body)
+          callbacks.onRoundStart?.(round)
+        })
 
-      // 訂閱投票更新
-      stompClient.subscribe(`/topic/room/${roomId}/vote`, (message) => {
-        const voteStatus = JSON.parse(message.body)
-        callbacks.onVoteUpdate?.(voteStatus)
-      })
+        // 訂閱投票更新
+        stompClient.subscribe(`/topic/room/${roomId}/vote`, (message) => {
+          const voteStatus = JSON.parse(message.body)
+          callbacks.onVoteUpdate?.(voteStatus)
+        })
 
-      // 訂閱回合結果
-      stompClient.subscribe(`/topic/room/${roomId}/round-result`, (message) => {
-        const round = JSON.parse(message.body)
-        callbacks.onRoundResult?.(round)
-      })
+        // 訂閱回合結果
+        stompClient.subscribe(`/topic/room/${roomId}/round-result`, (message) => {
+          const round = JSON.parse(message.body)
+          callbacks.onRoundResult?.(round)
+        })
 
-      // 訂閱玩家斷線
-      stompClient.subscribe(`/topic/room/${roomId}/player-disconnect`, (message) => {
-        const playerId = message.body
-        callbacks.onPlayerDisconnect?.(playerId)
+        // 訂閱玩家斷線
+        stompClient.subscribe(`/topic/room/${roomId}/player-disconnect`, (message) => {
+          const playerId = message.body
+          callbacks.onPlayerDisconnect?.(playerId)
+        })
+        
+        // 連接成功後 resolve
+        resolve(stompClient)
+      }, (error) => {
+        console.error('WebSocket 連接失敗:', error)
+        reject(error)
       })
-    }, (error) => {
-      console.error('WebSocket 連接失敗:', error)
     })
-    
-    return stompClient
   } catch (error) {
     console.error('WebSocket 初始化失敗:', error)
     return null

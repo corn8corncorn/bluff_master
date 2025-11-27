@@ -191,6 +191,12 @@ public class RoomController {
             @PathVariable String roomId,
             @PathVariable String hostId) {
         roomService.startGame(hostId);
+        
+        // 廣播房間更新，通知所有玩家遊戲已開始
+        RoomDTO room = roomService.getRoom(roomId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
+        log.info("廣播房間更新: 房間 {} 遊戲已開始", roomId);
+        
         return ResponseEntity.ok().build();
     }
 

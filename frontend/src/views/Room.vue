@@ -207,23 +207,35 @@ const isHost = computed(() => gameStore.isHost)
 const allPlayersReady = computed(() => gameStore.allPlayersReady)
 const canStartGame = computed(() => gameStore.canStartGame)
 
-// 監聽房間更新，檢測新玩家加入
+// 監聽房間更新，檢測新玩家加入和遊戲開始
 watch(() => gameStore.room, (newRoom, oldRoom) => {
-  // 只在有舊房間資料時才檢測新玩家（避免首次載入時觸發）
-  if (newRoom && oldRoom && oldRoom.players) {
-    const oldPlayerIds = oldRoom.players.map(p => p.id) || []
-    const newPlayerIds = newRoom.players?.map(p => p.id) || []
+  // 只在有舊房間資料時才檢測變化（避免首次載入時觸發）
+  if (newRoom && oldRoom) {
+    // 檢測遊戲開始：狀態從 WAITING 變為 PLAYING
+    if (oldRoom.status === 'WAITING' && newRoom.status === 'PLAYING') {
+      // 確保當前在 Room 頁面，然後導航到遊戲頁面
+      if (route.name === 'Room' && newRoom.id) {
+        router.push(`/game/${newRoom.id}`)
+        return
+      }
+    }
     
-    // 找出新加入的玩家
-    const newPlayerIdsList = newPlayerIds.filter(id => !oldPlayerIds.includes(id))
-    if (newPlayerIdsList.length > 0 && newRoom.players) {
-      const newPlayers = newRoom.players.filter(p => newPlayerIdsList.includes(p.id))
-      newPlayers.forEach(player => {
-        // 不顯示自己加入的通知
-        if (currentPlayer.value && player.id !== currentPlayer.value.id) {
-          showSuccess(`${player.nickname} 已加入房間`)
-        }
-      })
+    // 檢測新玩家加入
+    if (oldRoom.players) {
+      const oldPlayerIds = oldRoom.players.map(p => p.id) || []
+      const newPlayerIds = newRoom.players?.map(p => p.id) || []
+      
+      // 找出新加入的玩家
+      const newPlayerIdsList = newPlayerIds.filter(id => !oldPlayerIds.includes(id))
+      if (newPlayerIdsList.length > 0 && newRoom.players) {
+        const newPlayers = newRoom.players.filter(p => newPlayerIdsList.includes(p.id))
+        newPlayers.forEach(player => {
+          // 不顯示自己加入的通知
+          if (currentPlayer.value && player.id !== currentPlayer.value.id) {
+            showSuccess(`${player.nickname} 已加入房間`)
+          }
+        })
+      }
     }
   }
 }, { deep: true })

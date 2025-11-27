@@ -54,6 +54,30 @@ export const useGameStore = defineStore("game", () => {
     return response.data;
   }
 
+  async function fetchCurrentRound(roomId) {
+    try {
+      const response = await api.get(`/game/rooms/${roomId}/current-round`);
+      currentRound.value = response.data;
+      console.log("fetchCurrentRound: 獲取到當前回合", currentRound.value);
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        // 沒有當前回合，這是正常的
+        currentRound.value = null;
+        console.log("fetchCurrentRound: 沒有當前回合（404），這是正常的");
+        return null;
+      }
+      // 其他錯誤不拋出，只記錄
+      console.warn(
+        "fetchCurrentRound: 獲取當前回合失敗",
+        error.response?.status,
+        error.message
+      );
+      currentRound.value = null;
+      return null;
+    }
+  }
+
   async function fetchRoom(roomId) {
     const response = await api.get(`/rooms/${roomId}`);
     room.value = response.data;
@@ -332,7 +356,59 @@ export const useGameStore = defineStore("game", () => {
         }
       },
       onRoundStart: (round) => {
+        console.log("onRoundStart: 收到新回合", {
+          roundNumber: round.roundNumber,
+          speakerId: round.speakerId,
+          speakerNickname: round.speakerNickname,
+          round: round,
+          roomPlayers: room.value?.players?.map((p) => ({
+            id: p.id,
+            nickname: p.nickname,
+          })),
+        });
+
+        // 如果 round 沒有 speakerNickname，嘗試從房間玩家列表中獲取
+        if (!round.speakerNickname && round.speakerId && room.value?.players) {
+          // 嘗試精確匹配
+          let speaker = room.value.players.find(
+            (p) => p.id === round.speakerId
+          );
+
+          // 如果精確匹配失敗，嘗試字符串匹配
+          if (!speaker) {
+            speaker = room.value.players.find(
+              (p) => String(p.id) === String(round.speakerId)
+            );
+          }
+
+          if (speaker) {
+            round.speakerNickname = speaker.nickname;
+            console.log(
+              "onRoundStart: 從房間玩家列表獲取主講者暱稱:",
+              speaker.nickname
+            );
+          } else {
+            console.warn("onRoundStart: 無法在房間玩家列表中找到主講者", {
+              speakerId: round.speakerId,
+              speakerIdType: typeof round.speakerId,
+              playersIds: room.value.players.map((p) => ({
+                id: p.id,
+                idType: typeof p.id,
+                nickname: p.nickname,
+              })),
+            });
+          }
+        }
+
         currentRound.value = round;
+
+        // 當新回合開始時，如果當前玩家是主講者，確保 currentPlayer 的 imageUrls 是最新的
+        if (currentPlayer.value && currentPlayer.value.id === round.speakerId) {
+          // 重新獲取房間信息以確保圖片數據是最新的
+          fetchRoom(room.value.id).catch((error) => {
+            console.error("onRoundStart: 重新獲取房間信息失敗:", error);
+          });
+        }
       },
       onVoteUpdate: (voteStatus) => {
         if (currentRound.value) {
@@ -373,9 +449,21 @@ export const useGameStore = defineStore("game", () => {
   }
 
   function startRound() {
-    if (connection.value) {
+    console.log("startRound: 準備開始回合", {
+      hasConnection: !!connection.value,
+      connectionConnected: connection.value?.connected,
+      roomId: room.value?.id,
+    });
+
+    if (connection.value && connection.value.connected) {
       websocket.sendStartRound(connection.value, {
         roomId: room.value.id,
+      });
+      console.log("startRound: WebSocket 消息已發送");
+    } else {
+      console.error("startRound: WebSocket 未連接", {
+        hasConnection: !!connection.value,
+        connectionConnected: connection.value?.connected,
       });
     }
   }
@@ -416,6 +504,8 @@ export const useGameStore = defineStore("game", () => {
     vote,
     startRound,
     finishRound,
+    fetchCurrentRound,
     reset,
+    connection,
   };
 });

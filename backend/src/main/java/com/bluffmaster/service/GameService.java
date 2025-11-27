@@ -87,6 +87,17 @@ public class GameService {
         return convertToDTO(round, speaker.getNickname());
     }
 
+    public GameRoundDTO getCurrentRound(String roomId) {
+        Optional<GameRound> currentRound = gameRoundRepository.findByRoomIdAndIsFinishedFalse(roomId);
+        if (currentRound.isPresent()) {
+            GameRound round = currentRound.get();
+            Player speaker = playerRepository.findById(round.getSpeakerId())
+                    .orElseThrow(() -> new RuntimeException("主講者不存在"));
+            return convertToDTO(round, speaker.getNickname());
+        }
+        return null;
+    }
+
     @Transactional
     public void vote(String playerId, String imageUrl, String roundId) {
         GameRound round = gameRoundRepository.findById(roundId)
@@ -207,9 +218,24 @@ public class GameService {
     }
 
     private String selectSpeaker(Room room, List<Player> onlinePlayers) {
-        // 簡單輪流機制：根據回合數選擇
-        int roundIndex = room.getCurrentRound() % onlinePlayers.size();
-        return onlinePlayers.get(roundIndex).getId();
+        // 按照加入順序排序：房主先開始，然後按加入時間（createdAt）排序
+        List<Player> sortedPlayers = onlinePlayers.stream()
+                .sorted((p1, p2) -> {
+                    // 房主優先
+                    if (p1.getIsHost() && !p2.getIsHost()) {
+                        return -1;
+                    }
+                    if (!p1.getIsHost() && p2.getIsHost()) {
+                        return 1;
+                    }
+                    // 如果都是房主或都不是房主，按創建時間排序
+                    return p1.getCreatedAt().compareTo(p2.getCreatedAt());
+                })
+                .collect(Collectors.toList());
+        
+        // 根據回合數選擇（第1輪是房主，第2輪是第一個加入的玩家，以此類推）
+        int roundIndex = room.getCurrentRound() % sortedPlayers.size();
+        return sortedPlayers.get(roundIndex).getId();
     }
 
     private List<String> collectAllImages(List<Player> players, String excludePlayerId) {

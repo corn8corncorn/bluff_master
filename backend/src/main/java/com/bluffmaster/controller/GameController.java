@@ -47,5 +47,14 @@ public class GameController {
         gameService.handlePlayerReconnect(playerId);
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/rooms/{roomId}/current-round")
+    public ResponseEntity<GameRoundDTO> getCurrentRound(@PathVariable String roomId) {
+        GameRoundDTO round = gameService.getCurrentRound(roomId);
+        if (round == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(round);
+    }
 }
 
