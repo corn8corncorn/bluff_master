@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, triggerRef } from "vue";
 import api from "../services/api";
 import websocket from "../services/websocket";
 
@@ -80,7 +80,12 @@ export const useGameStore = defineStore("game", () => {
 
   async function fetchRoom(roomId) {
     const response = await api.get(`/rooms/${roomId}`);
-    room.value = response.data;
+    // 創建新的對象引用以確保響應式更新
+    room.value = {
+      ...response.data,
+      players: response.data.players ? [...response.data.players] : [],
+    };
+    triggerRef(room);
 
     // 設置標記，表示正在從 session 恢復玩家身份
     isRestoringPlayer.value = true;
@@ -249,8 +254,12 @@ export const useGameStore = defineStore("game", () => {
         const newPlayers =
           updatedRoom.players?.filter((p) => newPlayerIds.includes(p.id)) || [];
 
-        // 更新房間資訊
-        room.value = updatedRoom;
+        // 更新房間資訊（使用新的對象引用以確保響應式更新，包括 players 數組）
+        room.value = {
+          ...updatedRoom,
+          players: updatedRoom.players ? [...updatedRoom.players] : [],
+        };
+        triggerRef(room);
 
         // 更新當前玩家資訊
         // 如果正在從 session 恢復玩家身份（fetchRoom 中），跳過此更新，避免覆蓋
@@ -265,12 +274,15 @@ export const useGameStore = defineStore("game", () => {
             (p) => p.id === currentPlayer.value.id
           );
           if (updated) {
-            // 只更新資訊，不改變身份
-            currentPlayer.value = updated;
+            // 只更新資訊，不改變身份（創建新對象以確保響應式更新）
+            currentPlayer.value = { ...updated };
+            triggerRef(currentPlayer);
             console.log(
               "onRoomUpdate: 更新 currentPlayer 資訊:",
               updated.nickname,
-              updated.isHost ? "(房主)" : ""
+              updated.isHost ? "(房主)" : "",
+              "分數:",
+              updated.score
             );
           } else {
             // 如果 currentPlayer 不在房間中，才嘗試從 session 恢復
@@ -356,15 +368,14 @@ export const useGameStore = defineStore("game", () => {
         }
       },
       onRoundStart: (round) => {
-        console.log("onRoundStart: 收到新回合", {
-          roundNumber: round.roundNumber,
-          speakerId: round.speakerId,
-          speakerNickname: round.speakerNickname,
+        console.log("=== onRoundStart: 收到回合更新 ===", {
+          roundId: round?.id,
+          roundNumber: round?.roundNumber,
+          phase: round?.phase,
+          speakerId: round?.speakerId,
+          speakerNickname: round?.speakerNickname,
+          isFinished: round?.isFinished,
           round: round,
-          roomPlayers: room.value?.players?.map((p) => ({
-            id: p.id,
-            nickname: p.nickname,
-          })),
         });
 
         // 如果 round 沒有 speakerNickname，嘗試從房間玩家列表中獲取
@@ -400,11 +411,47 @@ export const useGameStore = defineStore("game", () => {
           }
         }
 
-        currentRound.value = round;
+        // 記錄舊階段以便比較
+        const oldPhase = currentRound.value?.phase;
+        const oldRoundId = currentRound.value?.id;
 
-        // 當新回合開始時，如果當前玩家是主講者，確保 currentPlayer 的 imageUrls 是最新的
-        if (currentPlayer.value && currentPlayer.value.id === round.speakerId) {
-          // 重新獲取房間信息以確保圖片數據是最新的
+        // 強制創建新對象以確保 Vue 響應式系統檢測到變化
+        // 每次更新都創建全新的對象引用，確保響應式系統檢測到變化
+        const newRound = {
+          id: round.id,
+          roomId: round.roomId,
+          roundNumber: round.roundNumber,
+          speakerId: round.speakerId,
+          speakerNickname: round.speakerNickname || null,
+          imageUrls: round.imageUrls ? [...round.imageUrls] : [],
+          fakeImageUrl: round.fakeImageUrl || null,
+          speakerFakeImageUrl: round.speakerFakeImageUrl || null,
+          phase: round.phase || null,
+          votes: round.votes ? { ...round.votes } : {},
+          isFinished: round.isFinished || false,
+          votingTimeLeft: round.votingTimeLeft || null,
+          voteResults: round.voteResults ? { ...round.voteResults } : null,
+        };
+
+        // 無論是否為同一回合，都直接替換整個對象以確保響應式更新
+        // 這樣可以確保 Vue 檢測到所有屬性的變化，包括 phase
+        currentRound.value = newRound;
+
+        // 強制觸發響應式更新（確保所有依賴 currentRound 的 computed 和 watch 都能觸發）
+        triggerRef(currentRound);
+
+        console.log("onRoundStart: 已更新 currentRound", {
+          oldRoundId,
+          newRoundId: round.id,
+          oldPhase: oldPhase,
+          newPhase: round.phase,
+          phase: currentRound.value?.phase,
+          isFinished: currentRound.value?.isFinished,
+          currentRoundRef: currentRound.value,
+        });
+
+        // 當新回合開始時，重新獲取房間信息以確保回合數和玩家資訊是最新的
+        if (room.value && room.value.id) {
           fetchRoom(room.value.id).catch((error) => {
             console.error("onRoundStart: 重新獲取房間信息失敗:", error);
           });
@@ -419,7 +466,43 @@ export const useGameStore = defineStore("game", () => {
         }
       },
       onRoundResult: (round) => {
-        currentRound.value = round;
+        console.log("onRoundResult: 收到回合結果", {
+          roundId: round?.id,
+          isFinished: round?.isFinished,
+          phase: round?.phase,
+          voteResults: round?.voteResults,
+        });
+
+        // 強制創建新對象以確保 Vue 響應式系統檢測到變化
+        const newRound = {
+          id: round.id,
+          roomId: round.roomId,
+          roundNumber: round.roundNumber,
+          speakerId: round.speakerId,
+          speakerNickname: round.speakerNickname || null,
+          imageUrls: round.imageUrls ? [...round.imageUrls] : [],
+          fakeImageUrl: round.fakeImageUrl || null,
+          speakerFakeImageUrl: round.speakerFakeImageUrl || null,
+          phase: round.phase || null,
+          votes: round.votes ? { ...round.votes } : {},
+          isFinished: round.isFinished || false,
+          votingTimeLeft: round.votingTimeLeft || null,
+          voteResults: round.voteResults ? { ...round.voteResults } : null,
+        };
+
+        currentRound.value = newRound;
+        triggerRef(currentRound);
+
+        // 重新獲取房間資訊以更新玩家分數（最後一輪時尤其重要）
+        if (round.roomId) {
+          fetchRoom(round.roomId)
+            .then(() => {
+              console.log("onRoundResult: 房間資訊已更新，玩家分數已同步");
+            })
+            .catch((error) => {
+              console.error("onRoundResult: 重新獲取房間信息失敗:", error);
+            });
+        }
       },
       onPlayerDisconnect: (playerId) => {
         const player = room.value.players.find((p) => p.id === playerId);
@@ -468,6 +551,86 @@ export const useGameStore = defineStore("game", () => {
     }
   }
 
+  function nextPhase() {
+    console.log("nextPhase: 準備進入下一階段", {
+      hasConnection: !!connection.value,
+      connectionConnected: connection.value?.connected,
+      currentRound: currentRound.value?.id,
+      currentPhase: currentRound.value?.phase,
+    });
+
+    if (!connection.value || !connection.value.connected) {
+      console.error("nextPhase: WebSocket 未連接", {
+        hasConnection: !!connection.value,
+        connectionConnected: connection.value?.connected,
+      });
+      return;
+    }
+
+    if (!currentRound.value || !currentRound.value.id) {
+      console.error("nextPhase: 沒有當前回合", {
+        hasCurrentRound: !!currentRound.value,
+        roundId: currentRound.value?.id,
+      });
+      return;
+    }
+
+    try {
+      websocket.sendNextPhase(connection.value, {
+        roundId: currentRound.value.id,
+      });
+      console.log("nextPhase: WebSocket 消息已發送", {
+        roundId: currentRound.value.id,
+      });
+    } catch (error) {
+      console.error("nextPhase: 發送消息失敗", error);
+    }
+  }
+
+  function startVoting() {
+    console.log("startVoting: 準備開始投票", {
+      hasConnection: !!connection.value,
+      connectionConnected: connection.value?.connected,
+      currentRound: currentRound.value?.id,
+      currentPhase: currentRound.value?.phase,
+    });
+
+    if (!connection.value || !connection.value.connected) {
+      console.error("startVoting: WebSocket 未連接", {
+        hasConnection: !!connection.value,
+        connectionConnected: connection.value?.connected,
+      });
+      return;
+    }
+
+    if (!currentRound.value || !currentRound.value.id) {
+      console.error("startVoting: 沒有當前回合", {
+        hasCurrentRound: !!currentRound.value,
+        roundId: currentRound.value?.id,
+      });
+      return;
+    }
+
+    try {
+      websocket.sendStartVoting(connection.value, {
+        roundId: currentRound.value.id,
+      });
+      console.log("startVoting: WebSocket 消息已發送", {
+        roundId: currentRound.value.id,
+      });
+    } catch (error) {
+      console.error("startVoting: 發送消息失敗", error);
+    }
+  }
+
+  function revealResult() {
+    if (connection.value && currentRound.value) {
+      websocket.sendRevealResult(connection.value, {
+        roundId: currentRound.value.id,
+      });
+    }
+  }
+
   function finishRound() {
     if (connection.value && currentRound.value) {
       websocket.sendFinishRound(connection.value, {
@@ -503,6 +666,9 @@ export const useGameStore = defineStore("game", () => {
     disconnectWebSocket,
     vote,
     startRound,
+    nextPhase,
+    startVoting,
+    revealResult,
     finishRound,
     fetchCurrentRound,
     reset,
