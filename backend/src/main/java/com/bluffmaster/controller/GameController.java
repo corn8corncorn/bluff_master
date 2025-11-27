@@ -30,6 +30,24 @@ public class GameController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/rounds/{roundId}/next-phase")
+    public ResponseEntity<GameRoundDTO> nextPhase(@PathVariable String roundId) {
+        GameRoundDTO round = gameService.nextPhase(roundId);
+        return ResponseEntity.ok(round);
+    }
+
+    @PostMapping("/rounds/{roundId}/start-voting")
+    public ResponseEntity<GameRoundDTO> startVoting(@PathVariable String roundId) {
+        GameRoundDTO round = gameService.startVoting(roundId);
+        return ResponseEntity.ok(round);
+    }
+
+    @PostMapping("/rounds/{roundId}/reveal")
+    public ResponseEntity<GameRoundDTO> revealResult(@PathVariable String roundId) {
+        GameRoundDTO round = gameService.revealResult(roundId);
+        return ResponseEntity.ok(round);
+    }
+
     @PostMapping("/rounds/{roundId}/finish")
     public ResponseEntity<GameRoundDTO> finishRound(@PathVariable String roundId) {
         GameRoundDTO round = gameService.finishRound(roundId);

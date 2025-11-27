@@ -32,7 +32,13 @@ public class WebSocketController {
     public void startRound(@Payload Map<String, String> payload) {
         String roomId = payload.get("roomId");
         GameRoundDTO round = gameService.startRound(roomId);
+        
+        // 廣播回合開始
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+        
+        // 廣播房間更新（更新回合數）
+        RoomDTO room = roomService.getRoom(roomId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
     }
 
     @MessageMapping("/game/vote")
@@ -53,12 +59,46 @@ public class WebSocketController {
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/vote", voteStatus);
     }
 
+    @MessageMapping("/game/next-phase")
+    public void nextPhase(@Payload Map<String, String> payload) {
+        log.info("收到 next-phase 請求: {}", payload);
+        String roundId = payload.get("roundId");
+        GameRoundDTO round = gameService.nextPhase(roundId);
+        String roomId = round.getRoomId();
+        log.info("廣播回合更新到房間 {}: phase={}, roundId={}", roomId, round.getPhase(), round.getId());
+        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+    }
+
+    @MessageMapping("/game/start-voting")
+    public void startVoting(@Payload Map<String, String> payload) {
+        log.info("收到 start-voting 請求: {}", payload);
+        String roundId = payload.get("roundId");
+        GameRoundDTO round = gameService.startVoting(roundId);
+        String roomId = round.getRoomId();
+        log.info("廣播回合更新到房間 {}: phase={}, roundId={}", roomId, round.getPhase(), round.getId());
+        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+    }
+
+    @MessageMapping("/game/reveal")
+    public void revealResult(@Payload Map<String, String> payload) {
+        String roundId = payload.get("roundId");
+        GameRoundDTO round = gameService.revealResult(roundId);
+        String roomId = round.getRoomId();
+        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+    }
+
     @MessageMapping("/game/finish-round")
     public void finishRound(@Payload Map<String, String> payload) {
         String roundId = payload.get("roundId");
         GameRoundDTO round = gameService.finishRound(roundId);
         String roomId = round.getRoomId();
+        
+        // 廣播回合結果
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round-result", round);
+        
+        // 廣播房間更新（更新玩家分數）
+        RoomDTO room = roomService.getRoom(roomId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
     }
 }
 

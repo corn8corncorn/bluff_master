@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-      <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">創建房間</h2>
+  <div class="min-h-screen flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full mx-2">
+      <h2 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">創建房間</h2>
 
       <form @submit.prevent="handleCreate" class="space-y-4">
         <div>
@@ -56,18 +56,18 @@
           </select>
         </div>
 
-        <div class="flex space-x-4 pt-4">
+        <div class="flex space-x-3 sm:space-x-4 pt-3 sm:pt-4">
           <button
             type="button"
             @click="$router.back()"
-            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            class="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors"
           >
             返回
           </button>
           <button
             type="submit"
             :disabled="loading"
-            class="flex-1 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50"
+            class="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base bg-purple-500 text-white rounded-lg hover:bg-purple-600 active:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {{ loading ? '創建中...' : '創建' }}
           </button>

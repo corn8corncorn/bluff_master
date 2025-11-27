@@ -1,31 +1,35 @@
 <template>
-  <div class="min-h-screen p-4">
+  <div class="min-h-screen p-2 sm:p-4">
     <div class="max-w-4xl mx-auto">
       <!-- 房間資訊 -->
-      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
-        <div class="flex justify-between items-center mb-4">
-          <div>
-            <h2 class="text-2xl font-bold text-gray-800">房間代碼</h2>
-            <p class="text-3xl font-mono tracking-widest text-purple-600 mt-2">
+      <div class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6 mb-3 sm:mb-6">
+        <div class="flex flex-row justify-between items-center mb-3 sm:mb-4 gap-3 sm:gap-4">
+          <div class="flex-1">
+            <h2 class="text-lg sm:text-2xl font-bold text-gray-800">房間代碼</h2>
+            <p 
+              @click="copyRoomCode"
+              class="text-xl sm:text-3xl font-mono tracking-widest text-purple-600 mt-2 cursor-pointer hover:text-purple-700 hover:underline transition-colors select-all"
+              :title="'點擊複製：' + room?.roomCode"
+            >
               {{ room?.roomCode }}
             </p>
           </div>
-          <div class="text-right">
-            <div class="text-sm text-gray-500">人數</div>
-            <div class="text-2xl font-bold text-gray-800">
+          <div class="text-right flex-shrink-0">
+            <div class="text-xs sm:text-sm text-gray-500">人數</div>
+            <div class="text-lg sm:text-2xl font-bold text-gray-800">
               {{ room?.players?.length || 0 }} / {{ room?.maxPlayers }}
             </div>
           </div>
         </div>
 
-        <div class="text-sm text-gray-600">
+        <div class="text-xs sm:text-sm text-gray-600">
           模式：{{ room?.gameMode === 'NORMAL' ? '一般模式' : '快速模式' }}
         </div>
       </div>
 
       <!-- 玩家列表 -->
-      <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
-        <h3 class="text-xl font-bold text-gray-800 mb-4">玩家列表</h3>
+      <div class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6 mb-3 sm:mb-6">
+        <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">玩家列表</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div
             v-for="player in room?.players"
@@ -62,13 +66,13 @@
       </div>
 
       <!-- 圖片上傳 -->
-      <div v-if="currentPlayer" class="bg-white rounded-2xl shadow-xl p-6 mb-6">
-        <h3 class="text-xl font-bold text-gray-800 mb-4">上傳圖片</h3>
-        <div class="mb-4">
-          <div class="text-sm text-gray-600 mb-2">
+      <div v-if="currentPlayer" class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6 mb-3 sm:mb-6">
+        <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">上傳圖片</h3>
+        <div class="mb-3 sm:mb-4">
+          <div class="text-xs sm:text-sm text-gray-600 mb-2">
             需要上傳：{{ requiredImages }} 張（單張 < 5MB）
           </div>
-          <div class="text-sm text-gray-600">
+          <div class="text-xs sm:text-sm text-gray-600">
             已上傳：{{ currentPlayer?.imageUrls?.length || 0 }} 張
           </div>
         </div>
@@ -84,13 +88,13 @@
 
         <button
           @click="$refs.fileInput.click()"
-          :disabled="uploading || currentPlayer?.isReady"
-          class="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="uploading || (currentPlayer?.isReady && room?.status === 'WAITING')"
+          class="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ uploading ? '上傳中...' : currentPlayer?.isReady ? '已準備，無法上傳' : '選擇圖片' }}
+          {{ uploading ? '上傳中...' : (currentPlayer?.isReady && room?.status === 'WAITING') ? '已準備，無法上傳' : '選擇圖片' }}
         </button>
 
-        <div v-if="currentPlayer?.imageUrls?.length > 0" class="mt-4 grid grid-cols-4 gap-2">
+        <div v-if="currentPlayer?.imageUrls?.length > 0" class="mt-3 sm:mt-4 grid grid-cols-4 gap-1.5 sm:gap-2">
           <div
             v-for="(url, index) in currentPlayer.imageUrls"
             :key="index"
@@ -112,8 +116,8 @@
       </div>
 
       <!-- 操作按鈕 -->
-      <div class="bg-white rounded-2xl shadow-xl p-6">
-        <div class="space-y-4">
+      <div class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6">
+        <div class="space-y-3 sm:space-y-4">
           <!-- 如果找不到玩家，顯示重新加入表單 -->
           <div v-if="!currentPlayer && room" class="space-y-4">
             <div class="text-center text-gray-600 mb-4">
@@ -146,23 +150,32 @@
               v-if="!currentPlayer?.isReady"
               @click="handleReady"
               :disabled="!canReady"
-              class="w-full px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-green-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-green-600 active:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               準備
             </button>
 
             <button
-              v-if="currentPlayer?.isReady"
+              v-if="currentPlayer?.isReady && room?.status === 'WAITING'"
               @click="handleCancelReady"
-              class="w-full px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-600 active:bg-gray-700 transition-colors"
             >
               取消準備
+            </button>
+            
+            <!-- 遊戲進行中，顯示返回遊戲按鈕 -->
+            <button
+              v-if="room?.status === 'PLAYING'"
+              @click="router.push(`/game/${room.id}`)"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors"
+            >
+              返回遊戲
             </button>
 
             <button
               v-if="isHost && canStartGame"
               @click="handleStartGame"
-              class="w-full px-6 py-3 bg-purple-500 text-white rounded-lg font-semibold text-lg hover:bg-purple-600"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors"
             >
               開始遊戲
             </button>
@@ -174,7 +187,7 @@
             <!-- 退出房間按鈕 -->
             <button
               @click="handleLeave"
-              class="w-full px-6 py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 mt-4"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-red-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-red-600 active:bg-red-700 mt-3 sm:mt-4 transition-colors"
             >
               退出房間
             </button>
@@ -276,8 +289,8 @@ async function handleFileSelect(event) {
     return
   }
 
-  // 檢查玩家是否已準備
-  if (currentPlayer.value.isReady) {
+  // 檢查玩家是否已準備（只有在等待狀態下才限制）
+  if (currentPlayer.value.isReady && room.value?.status === 'WAITING') {
     showError('已準備狀態下無法上傳圖片，請先取消準備')
     event.target.value = ''
     return
@@ -415,6 +428,31 @@ async function handleRejoin() {
     showError(errorMessage)
   } finally {
     rejoining.value = false
+  }
+}
+
+async function copyRoomCode() {
+  if (!room.value?.roomCode) return
+  
+  try {
+    await navigator.clipboard.writeText(room.value.roomCode)
+    showSuccess('房間代碼已複製到剪貼板')
+  } catch (error) {
+    console.error('複製失敗:', error)
+    // 降級方案：使用傳統方法
+    const textArea = document.createElement('textarea')
+    textArea.value = room.value.roomCode
+    textArea.style.position = 'fixed'
+    textArea.style.opacity = '0'
+    document.body.appendChild(textArea)
+    textArea.select()
+    try {
+      document.execCommand('copy')
+      showSuccess('房間代碼已複製到剪貼板')
+    } catch (err) {
+      showError('複製失敗，請手動複製')
+    }
+    document.body.removeChild(textArea)
   }
 }
 </script>

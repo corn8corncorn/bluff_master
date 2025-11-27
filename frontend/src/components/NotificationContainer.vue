@@ -1,11 +1,11 @@
 <template>
-  <div class="fixed top-4 right-4 z-50 space-y-2">
+  <div class="fixed top-2 right-2 sm:top-4 sm:right-4 z-50 space-y-2 max-w-[calc(100vw-1rem)] sm:max-w-md">
     <TransitionGroup name="notification" tag="div">
       <div
         v-for="notification in notifications"
         :key="notification.id"
         :class="[
-          'px-4 py-3 rounded-lg shadow-lg min-w-[300px] max-w-md flex items-center justify-between',
+          'px-3 sm:px-4 py-2 sm:py-3 rounded-lg shadow-lg w-full max-w-full flex items-center justify-between',
           getNotificationClass(notification.type)
         ]"
       >
@@ -14,7 +14,7 @@
             :is="getIcon(notification.type)"
             class="w-5 h-5"
           />
-          <span class="text-sm font-medium">{{ notification.message }}</span>
+          <span class="text-xs sm:text-sm font-medium break-words">{{ notification.message }}</span>
         </div>
         <button
           @click="remove(notification.id)"

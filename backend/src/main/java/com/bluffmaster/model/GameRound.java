@@ -39,6 +39,13 @@ public class GameRound {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String fakeImageUrl;  // 假圖 URL
 
+    @Column(columnDefinition = "TEXT")
+    private String speakerFakeImageUrl;  // 主講者選擇的說謊圖片 URL
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private RoundPhase phase;  // 回合階段
+
     @ElementCollection
     @CollectionTable(name = "round_votes", joinColumns = @JoinColumn(name = "round_id"))
     @MapKeyColumn(name = "player_id")
@@ -54,6 +61,14 @@ public class GameRound {
     @Column
     private LocalDateTime finishedAt;
 
+    public enum RoundPhase {
+        STORY_TELLING,  // 講故事階段
+        QUESTIONING,    // 發問階段
+        VOTING,         // 投票階段
+        REVEALING,      // 公布結果階段
+        FINISHED        // 已完成
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -62,6 +77,9 @@ public class GameRound {
         }
         if (isFinished == null) {
             isFinished = false;
+        }
+        if (phase == null) {
+            phase = RoundPhase.STORY_TELLING;
         }
     }
 

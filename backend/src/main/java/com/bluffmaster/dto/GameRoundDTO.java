@@ -1,5 +1,6 @@
 package com.bluffmaster.dto;
 
+import com.bluffmaster.model.GameRound;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,8 +21,11 @@ public class GameRoundDTO {
     private String speakerNickname;
     private List<String> imageUrls;
     private String fakeImageUrl;
+    private String speakerFakeImageUrl;  // 主講者選擇的說謊圖片
+    private GameRound.RoundPhase phase;  // 回合階段
     private Map<String, String> votes;
     private Boolean isFinished;
     private Integer votingTimeLeft;  // 剩餘投票時間（秒）
+    private Map<String, VoteResult> voteResults;  // 每個玩家的投票結果和得分變化
 }
 
