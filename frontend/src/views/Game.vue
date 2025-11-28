@@ -74,13 +74,13 @@
           </button>
         </div>
 
-        <!-- 投票階段 - 主講者選擇說謊圖片 -->
+        <!-- 投票階段 - 主講者查看圖片（不可投票） -->
         <div v-if="currentRound.phase === 'VOTING'">
           <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">
-            選擇您說謊的圖片
+            投票階段
           </h3>
           <p class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-            請從這4張圖片中選擇一張您說謊的圖片（只能選擇您上傳的圖片）
+            其他玩家正在投票中，您可以查看圖片但無法投票
           </p>
           <div
             v-if="votingTimeLeft <= 0"
@@ -94,56 +94,18 @@
           <div
             v-if="currentRound.imageUrls && currentRound.imageUrls.length > 0"
             class="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-4"
-            :class="{ 'opacity-50 pointer-events-none': votingTimeLeft <= 0 }"
           >
             <div
               v-for="(imageUrl, index) in currentRound.imageUrls"
               :key="index"
-              @click="handleSpeakerFakeImageSelect(imageUrl)"
-              class="relative aspect-square rounded-lg overflow-hidden cursor-pointer transform transition-all hover:scale-105"
-              :class="{
-                'ring-4 ring-red-500': selectedSpeakerFakeImage === imageUrl,
-                'opacity-50 cursor-not-allowed': !isSpeakerImage(imageUrl),
-              }"
+              class="relative aspect-square rounded-lg overflow-hidden"
             >
               <img
                 :src="imageUrl"
-                alt="主講者圖片"
+                alt="投票圖片"
                 class="w-full h-full object-cover"
               />
-              <div
-                v-if="!isSpeakerImage(imageUrl)"
-                class="absolute inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center"
-              >
-                <p class="text-white text-sm font-semibold">假圖</p>
-              </div>
-              <div
-                v-if="selectedSpeakerFakeImage === imageUrl"
-                class="absolute inset-0 bg-red-500 bg-opacity-30 flex items-center justify-center"
-              >
-                <div class="bg-white rounded-full p-2">
-                  <svg
-                    class="w-8 h-8 text-red-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-              </div>
             </div>
-          </div>
-          <div
-            v-if="selectedSpeakerFakeImage"
-            class="text-center text-green-600 font-semibold"
-          >
-            ✓ 已選擇說謊圖片
           </div>
         </div>
       </div>
