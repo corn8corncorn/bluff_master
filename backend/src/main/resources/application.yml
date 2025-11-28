@@ -29,6 +29,11 @@ spring:
         max-idle: 8
         min-idle: 0
 
+  servlet:
+    multipart:
+      max-file-size: 100MB # 單個文件最大大小（允許上傳大圖片，後續會自動壓縮）
+      max-request-size: 500MB # 整個請求最大大小（支持多文件上傳）
+
 server:
   port: 8080
   servlet:
@@ -42,6 +47,8 @@ server:
         path: /api # 設置 cookie 路徑，確保只在 /api 路徑下有效
       timeout: 30m # Session 過期時間：30 分鐘
       tracking-modes: cookie # 明確使用 cookie 來追蹤 session
+  tomcat:
+    max-swallow-size: 100MB # Tomcat 連接器允許的最大請求體大小
 
 # Storage Configuration
 storage:

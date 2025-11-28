@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -121,12 +124,6 @@ public class ImageService {
                 log.info("處理第 {} 個文件: {}, 大小: {} bytes, 類型: {}", 
                     i + 1, file.getOriginalFilename(), file.getSize(), file.getContentType());
                 
-                // 驗證文件大小
-                if (file.getSize() > maxImageSize) {
-                    log.error("圖片大小超過限制: {} bytes, 最大: {} bytes", file.getSize(), maxImageSize);
-                    throw new RuntimeException("圖片大小超過 5MB 限制");
-                }
-
                 // 驗證文件類型
                 String contentType = file.getContentType();
                 if (contentType == null || !contentType.startsWith("image/")) {
@@ -245,46 +242,61 @@ public class ImageService {
 
             int originalWidth = originalImage.getWidth();
             int originalHeight = originalImage.getHeight();
-            log.debug("原始圖片尺寸: {}x{}", originalWidth, originalHeight);
+            long originalSize = file.getSize();
+            log.debug("原始圖片尺寸: {}x{}, 大小: {} bytes", originalWidth, originalHeight, originalSize);
 
-            // 計算新尺寸
+            // 如果原始圖片已經小於 5MB，直接處理尺寸調整
+            if (originalSize <= maxImageSize) {
+                log.debug("圖片大小已符合要求，僅進行尺寸調整");
+                return compressImageWithSize(originalImage, originalWidth, originalHeight);
+            }
+
+            // 圖片大於 5MB，需要壓縮
+            log.info("圖片大小超過 5MB ({} bytes)，開始壓縮", originalSize);
+            
+            // 計算初始尺寸（先縮小尺寸）
             int newWidth = originalWidth;
             int newHeight = originalHeight;
-
+            
             if (originalWidth > maxWidth) {
                 newWidth = maxWidth;
                 newHeight = (int) ((double) originalHeight * maxWidth / originalWidth);
-                log.debug("圖片需要縮小到: {}x{}", newWidth, newHeight);
             } else if (originalWidth < minWidth) {
                 newWidth = minWidth;
                 newHeight = (int) ((double) originalHeight * minWidth / originalWidth);
-                log.debug("圖片需要放大到: {}x{}", newWidth, newHeight);
             }
 
-            // 調整圖片大小
-            java.awt.Image scaledImage = originalImage.getScaledInstance(
-                    newWidth, newHeight, java.awt.Image.SCALE_SMOOTH);
-            BufferedImage bufferedScaledImage = new BufferedImage(
-                    newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+            // 迭代壓縮，直到文件大小小於 5MB
+            float quality = 0.9f; // 初始品質
+            float qualityStep = 0.1f; // 每次降低的品質
+            int maxIterations = 10; // 最大迭代次數
             
-            java.awt.Graphics2D g2d = bufferedScaledImage.createGraphics();
-            try {
-                g2d.drawImage(scaledImage, 0, 0, null);
-            } finally {
-                g2d.dispose();
-            }
-
-            // 轉換為 byte array
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            boolean written = ImageIO.write(bufferedScaledImage, "jpg", baos);
-            if (!written) {
-                log.error("無法將圖片寫入輸出流");
-                throw new RuntimeException("圖片處理失敗");
+            for (int iteration = 0; iteration < maxIterations; iteration++) {
+                byte[] compressed = compressImageWithQuality(originalImage, newWidth, newHeight, quality);
+                
+                if (compressed.length <= maxImageSize) {
+                    log.info("圖片壓縮成功，最終大小: {} bytes (品質: {})", compressed.length, quality);
+                    return compressed;
+                }
+                
+                // 如果還是太大，降低品質或進一步縮小尺寸
+                if (quality > 0.3f) {
+                    quality -= qualityStep;
+                    log.debug("降低壓縮品質至: {}", quality);
+                } else {
+                    // 品質已經很低，進一步縮小尺寸
+                    newWidth = (int) (newWidth * 0.9);
+                    newHeight = (int) (newHeight * 0.9);
+                    quality = 0.7f; // 重置品質
+                    log.debug("進一步縮小尺寸至: {}x{}", newWidth, newHeight);
+                }
             }
             
-            byte[] result = baos.toByteArray();
-            log.debug("圖片壓縮完成，輸出大小: {} bytes", result.length);
-            return result;
+            // 如果還是太大，使用最後一次嘗試的結果
+            byte[] finalResult = compressImageWithQuality(originalImage, newWidth, newHeight, 0.3f);
+            log.warn("達到最大迭代次數，最終大小: {} bytes", finalResult.length);
+            return finalResult;
+            
         } catch (IOException e) {
             log.error("壓縮圖片時發生 IO 錯誤", e);
             throw new RuntimeException("圖片處理失敗: " + e.getMessage(), e);
@@ -292,6 +304,82 @@ public class ImageService {
             log.error("壓縮圖片時發生未知錯誤", e);
             throw new RuntimeException("圖片處理失敗: " + e.getMessage(), e);
         }
+    }
+
+    private byte[] compressImageWithSize(BufferedImage originalImage, int targetWidth, int targetHeight) throws IOException {
+        // 計算新尺寸
+        int newWidth = targetWidth;
+        int newHeight = targetHeight;
+
+        int originalWidth = originalImage.getWidth();
+        int originalHeight = originalImage.getHeight();
+
+        if (originalWidth > maxWidth) {
+            newWidth = maxWidth;
+            newHeight = (int) ((double) originalHeight * maxWidth / originalWidth);
+            log.debug("圖片需要縮小到: {}x{}", newWidth, newHeight);
+        } else if (originalWidth < minWidth) {
+            newWidth = minWidth;
+            newHeight = (int) ((double) originalHeight * minWidth / originalWidth);
+            log.debug("圖片需要放大到: {}x{}", newWidth, newHeight);
+        }
+
+        // 調整圖片大小
+        java.awt.Image scaledImage = originalImage.getScaledInstance(
+                newWidth, newHeight, java.awt.Image.SCALE_SMOOTH);
+        BufferedImage bufferedScaledImage = new BufferedImage(
+                newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+        
+        java.awt.Graphics2D g2d = bufferedScaledImage.createGraphics();
+        try {
+            g2d.drawImage(scaledImage, 0, 0, null);
+        } finally {
+            g2d.dispose();
+        }
+
+        // 轉換為 byte array
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        boolean written = ImageIO.write(bufferedScaledImage, "jpg", baos);
+        if (!written) {
+            log.error("無法將圖片寫入輸出流");
+            throw new RuntimeException("圖片處理失敗");
+        }
+        
+        return baos.toByteArray();
+    }
+
+    private byte[] compressImageWithQuality(BufferedImage originalImage, int targetWidth, int targetHeight, float quality) throws IOException {
+        // 調整圖片大小
+        java.awt.Image scaledImage = originalImage.getScaledInstance(
+                targetWidth, targetHeight, java.awt.Image.SCALE_SMOOTH);
+        BufferedImage bufferedScaledImage = new BufferedImage(
+                targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+        
+        java.awt.Graphics2D g2d = bufferedScaledImage.createGraphics();
+        try {
+            g2d.drawImage(scaledImage, 0, 0, null);
+        } finally {
+            g2d.dispose();
+        }
+
+        // 使用 ImageWriter 進行品質壓縮
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        
+        if (param.canWriteCompressed()) {
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(quality);
+        }
+        
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+            writer.setOutput(ios);
+            writer.write(null, new javax.imageio.IIOImage(bufferedScaledImage, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        
+        return baos.toByteArray();
     }
 
     private String uploadToGCP(String fileName, byte[] imageData) {

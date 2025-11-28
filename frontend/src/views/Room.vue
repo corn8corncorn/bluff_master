@@ -70,7 +70,7 @@
         <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">上傳圖片</h3>
         <div class="mb-3 sm:mb-4">
           <div class="text-xs sm:text-sm text-gray-600 mb-2">
-            需要上傳：{{ requiredImages }} 張（單張 < 5MB）
+            需要上傳：{{ requiredImages }} 張
           </div>
           <div class="text-xs sm:text-sm text-gray-600">
             已上傳：{{ currentPlayer?.imageUrls?.length || 0 }} 張
