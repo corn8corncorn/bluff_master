@@ -91,20 +91,50 @@
             </p>
           </div>
 
+          <!-- 圖片網格（所有圖片同時渲染，但用遮罩覆蓋直到全部加載完成） -->
           <div
             v-if="currentRound.imageUrls && currentRound.imageUrls.length > 0"
             class="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-4"
           >
             <div
               v-for="(imageUrl, index) in currentRound.imageUrls"
-              :key="index"
+              :key="`speaker-img-${imageUrl}-${index}`"
               class="relative aspect-square rounded-lg overflow-hidden"
             >
+              <!-- 在DOM中渲染圖片以觸發瀏覽器加載，但在未加載完成前完全隱藏 -->
               <img
                 :src="imageUrl"
                 alt="投票圖片"
                 class="w-full h-full object-cover"
+                @load="(event) => handleImageLoad(event, imageUrl, index)"
+                @error="(event) => handleImageError(event, imageUrl, index)"
+                :style="{
+                  opacity: votingImagesLoaded ? 1 : 0,
+                  transition: 'opacity 0.3s',
+                }"
               />
+              <!-- 加載中的遮罩層（始終顯示在圖片上方，直到所有圖片加載完成） -->
+              <div
+                v-if="!votingImagesLoaded"
+                class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-10 rounded-lg"
+              >
+                <svg
+                  class="w-12 h-12 text-gray-400 animate-spin mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <p class="text-xs sm:text-sm text-gray-500 font-medium">
+                  圖片加載中...
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -156,27 +186,62 @@
               投票時間已結束，等待公布結果...
             </p>
           </div>
+          <!-- 圖片網格（所有圖片同時渲染，但用遮罩覆蓋直到全部加載完成） -->
           <div
+            v-if="currentRound.imageUrls && currentRound.imageUrls.length > 0"
             class="grid grid-cols-2 gap-2 sm:gap-4"
-            :class="{ 'opacity-50 pointer-events-none': votingTimeLeft <= 0 }"
+            :class="{
+              'opacity-50 pointer-events-none': votingTimeLeft <= 0,
+            }"
           >
             <div
               v-for="(imageUrl, index) in currentRound.imageUrls"
-              :key="index"
+              :key="`img-${imageUrl}-${index}`"
               @click="handleVote(imageUrl)"
               class="relative aspect-square rounded-lg overflow-hidden cursor-pointer transform transition-all hover:scale-105"
               :class="{
-                'ring-4 ring-purple-500': selectedImage === imageUrl,
+                'ring-4 ring-purple-500':
+                  selectedImage === imageUrl && votingImagesLoaded,
               }"
             >
+              <!-- 在DOM中渲染圖片以觸發瀏覽器加載，但在未加載完成前完全隱藏 -->
               <img
                 :src="imageUrl"
                 alt="遊戲圖片"
                 class="w-full h-full object-cover"
+                @load="(event) => handleImageLoad(event, imageUrl, index)"
+                @error="(event) => handleImageError(event, imageUrl, index)"
+                :style="{
+                  opacity: votingImagesLoaded ? 1 : 0,
+                  transition: 'opacity 0.3s',
+                }"
               />
+              <!-- 加載中的遮罩層（始終顯示在圖片上方，直到所有圖片加載完成） -->
               <div
-                v-if="selectedImage === imageUrl"
-                class="absolute inset-0 bg-purple-500 bg-opacity-30 flex items-center justify-center"
+                v-if="!votingImagesLoaded"
+                class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-10 rounded-lg"
+              >
+                <svg
+                  class="w-12 h-12 text-gray-400 animate-spin mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <p class="text-xs sm:text-sm text-gray-500 font-medium">
+                  圖片加載中...
+                </p>
+              </div>
+              <!-- 選中標記（只有所有圖片加載完成後才顯示） -->
+              <div
+                v-if="selectedImage === imageUrl && votingImagesLoaded"
+                class="absolute inset-0 bg-purple-500 bg-opacity-30 flex items-center justify-center z-20"
               >
                 <div class="bg-white rounded-full p-2">
                   <svg
@@ -198,7 +263,7 @@
           </div>
 
           <div
-            v-if="selectedImage"
+            v-if="selectedImage && votingImagesLoaded"
             class="mt-4 text-center text-green-600 font-semibold"
           >
             ✓ 當前選擇：已選中一張圖片（可隨時更改）
@@ -668,6 +733,8 @@ const enlargedImage = ref(null);
 const shuffledSpeakerImages = ref([]);
 const displayedSpeakerImages = ref([]);
 const showFinalResultModal = ref(false);
+const votingImagesLoaded = ref(false);
+const imageLoadStatus = ref(new Map()); // 追蹤每張圖片的加載狀態
 let votingTimer = null;
 
 const room = computed(() => gameStore.room);
@@ -869,8 +936,10 @@ onMounted(async () => {
     });
   }
 
-  // 如果進入投票階段，開始倒數
+  // 如果進入投票階段，開始倒數並預載圖片
   if (currentRound.value?.phase === "VOTING") {
+    votingImagesLoaded.value = false;
+    preloadVotingImages();
     startVotingTimer();
   }
   // 如果進入公布結果階段，直接結束回合（不需要倒數）
@@ -1022,11 +1091,21 @@ watch(
       console.log("進入投票階段，重置投票狀態並開始倒數");
       selectedImage.value = null;
       selectedSpeakerFakeImage.value = null;
+      // 重置圖片加載狀態
+      votingImagesLoaded.value = false;
+      imageLoadStatus.value.clear();
+      // 等待nextTick確保DOM更新後再開始預載
+      nextTick(() => {
+        preloadVotingImages();
+      });
       // 開始投票倒數
       startVotingTimer();
     } else if (votingTimer && newPhase !== "VOTING") {
       clearInterval(votingTimer);
       votingTimer = null;
+      // 離開投票階段時重置加載狀態
+      votingImagesLoaded.value = false;
+      imageLoadStatus.value.clear();
     }
 
     // 如果是發問階段，清除投票相關狀態
@@ -1041,6 +1120,40 @@ watch(
     }
   },
   { immediate: true }
+);
+
+// 監聽投票圖片 URLs 變化，確保所有4張圖片都準備好後再預載
+watch(
+  () => currentRound.value?.imageUrls,
+  async (newImageUrls, oldImageUrls) => {
+    // 只有在投票階段且圖片URLs確實變化時才處理
+    if (
+      currentRound.value?.phase === "VOTING" &&
+      newImageUrls &&
+      newImageUrls.length > 0
+    ) {
+      // 確保有4張圖片URL（3張真圖 + 1張假圖）
+      if (newImageUrls.length === 4) {
+        // 檢查URLs是否真的變化（避免重複加載）
+        if (JSON.stringify(newImageUrls) !== JSON.stringify(oldImageUrls)) {
+          console.log("投票圖片URLs變化，開始預載所有4張圖片");
+          votingImagesLoaded.value = false;
+          await preloadVotingImages();
+        } else if (!votingImagesLoaded.value) {
+          // 如果URLs沒變化但還沒加載，也開始加載
+          console.log("投票圖片URLs未變化，但尚未加載，開始預載");
+          await preloadVotingImages();
+        }
+      } else {
+        // 如果圖片數量不對，等待
+        console.log(
+          `投票圖片URLs數量不正確 (${newImageUrls.length}/4)，等待...`
+        );
+        votingImagesLoaded.value = false;
+      }
+    }
+  },
+  { deep: true, immediate: false }
 );
 
 onUnmounted(() => {
@@ -1129,6 +1242,206 @@ function handleNextPhase() {
 function handleStartVoting() {
   if (isSpeaker.value && currentRound.value?.phase === "QUESTIONING") {
     gameStore.startVoting();
+  }
+}
+
+// 預載所有投票圖片，重置加載狀態（圖片會在DOM中自動加載）
+function preloadVotingImages() {
+  // 確保有圖片URLs且數量正確（應該是4張）
+  if (
+    !currentRound.value?.imageUrls ||
+    currentRound.value.imageUrls.length === 0
+  ) {
+    console.log("預載圖片: 圖片URLs不存在或為空，等待...");
+    votingImagesLoaded.value = false;
+    // 如果圖片URLs還沒準備好，等待一段時間後重試
+    setTimeout(() => {
+      if (
+        currentRound.value?.imageUrls &&
+        currentRound.value.imageUrls.length > 0
+      ) {
+        preloadVotingImages();
+      }
+    }, 500);
+    return;
+  }
+
+  // 確保有4張圖片
+  if (currentRound.value.imageUrls.length !== 4) {
+    console.log(
+      `預載圖片: 圖片數量不正確 (${currentRound.value.imageUrls.length}/4)，等待...`
+    );
+    votingImagesLoaded.value = false;
+    setTimeout(() => {
+      if (
+        currentRound.value?.imageUrls &&
+        currentRound.value.imageUrls.length === 4
+      ) {
+        preloadVotingImages();
+      }
+    }, 500);
+    return;
+  }
+
+  console.log(
+    "預載圖片: 重置加載狀態，等待DOM中的圖片加載",
+    currentRound.value.imageUrls
+  );
+  // 重置加載狀態，圖片會在DOM中自動加載，@load事件會觸發handleImageLoad
+  votingImagesLoaded.value = false;
+  imageLoadStatus.value.clear();
+
+  // 等待DOM更新後，檢查圖片是否已經在緩存中（如果是刷新頁面，圖片可能已加載）
+  nextTick(() => {
+    setTimeout(() => {
+      checkCachedImages();
+    }, 100);
+  });
+
+  // 設置超時，如果10秒內還沒加載完成，也顯示（避免無限等待）
+  setTimeout(() => {
+    if (!votingImagesLoaded.value) {
+      console.warn("⚠️ 圖片加載超時，強制顯示已加載的圖片");
+      votingImagesLoaded.value = true;
+    }
+  }, 10000);
+}
+
+// 檢查已緩存的圖片（如果圖片已經在瀏覽器緩存中，load事件可能不會觸發）
+function checkCachedImages() {
+  const imageUrls = currentRound.value?.imageUrls;
+  if (!imageUrls || imageUrls.length === 0 || imageUrls.length !== 4) {
+    return;
+  }
+
+  imageUrls.forEach((imageUrl, index) => {
+    if (!imageLoadStatus.value.has(imageUrl)) {
+      // 查找DOM中的img元素
+      const imgElements = document.querySelectorAll(`img[src="${imageUrl}"]`);
+      imgElements.forEach((img) => {
+        if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+          // 圖片已在緩存中並已加載
+          imageLoadStatus.value.set(imageUrl, { loaded: true, index });
+          console.log(
+            `✅ 圖片 ${index + 1}/4 已在緩存中加載完成: ${imageUrl.substring(
+              0,
+              50
+            )}...`
+          );
+          checkAllImagesLoaded();
+        }
+      });
+    }
+  });
+}
+
+// 處理圖片加載完成事件（從DOM中的img標籤觸發）
+function handleImageLoad(event, imageUrl, index) {
+  const imgElement = event.target;
+  // 驗證圖片確實加載完成
+  if (
+    imgElement &&
+    imgElement.complete &&
+    imgElement.naturalWidth > 0 &&
+    imgElement.naturalHeight > 0
+  ) {
+    if (!imageLoadStatus.value.has(imageUrl)) {
+      imageLoadStatus.value.set(imageUrl, { loaded: true, index });
+      const total = currentRound.value?.imageUrls?.length || 4;
+      console.log(
+        `✅ 圖片 ${index + 1}/${total} 加載完成: ${imageUrl.substring(
+          0,
+          50
+        )}...`
+      );
+      checkAllImagesLoaded();
+    }
+  } else {
+    // 如果圖片還沒完全加載，等待一下再檢查
+    setTimeout(() => {
+      if (
+        imgElement &&
+        imgElement.complete &&
+        imgElement.naturalWidth > 0 &&
+        imgElement.naturalHeight > 0
+      ) {
+        if (!imageLoadStatus.value.has(imageUrl)) {
+          imageLoadStatus.value.set(imageUrl, { loaded: true, index });
+          const total = currentRound.value?.imageUrls?.length || 4;
+          console.log(
+            `✅ 圖片 ${
+              index + 1
+            }/${total} 加載完成（延遲驗證）: ${imageUrl.substring(0, 50)}...`
+          );
+          checkAllImagesLoaded();
+        }
+      }
+    }, 100);
+  }
+}
+
+// 處理圖片加載錯誤事件
+function handleImageError(event, imageUrl, index) {
+  const total = currentRound.value?.imageUrls?.length || 4;
+  console.error(
+    `❌ 圖片 ${index + 1}/${total} 加載失敗: ${imageUrl.substring(0, 50)}...`
+  );
+  // 即使加載失敗也標記為已處理，避免無限等待
+  if (!imageLoadStatus.value.has(imageUrl)) {
+    imageLoadStatus.value.set(imageUrl, { loaded: false, index, error: true });
+    // 加載失敗的圖片不計入成功加載，但仍需等待所有圖片都處理完成
+    checkAllImagesLoaded();
+  }
+}
+
+// 檢查所有圖片是否都已加載完成
+function checkAllImagesLoaded() {
+  const imageUrls = currentRound.value?.imageUrls;
+  if (!imageUrls || imageUrls.length === 0) {
+    return;
+  }
+
+  // 確保有4張圖片
+  if (imageUrls.length !== 4) {
+    console.log(`等待圖片URLs準備完成 (${imageUrls.length}/4)...`);
+    return;
+  }
+
+  // 檢查所有4張圖片是否都已處理（加載成功或失敗）
+  const allProcessed = imageUrls.every((url) => imageLoadStatus.value.has(url));
+
+  if (allProcessed && imageUrls.length === imageLoadStatus.value.size) {
+    // 檢查所有圖片是否都成功加載
+    const loadedImages = imageUrls.filter((url) => {
+      const status = imageLoadStatus.value.get(url);
+      return status && status.loaded;
+    });
+
+    console.log(
+      `圖片加載狀態: ${loadedImages.length}/${imageUrls.length} 成功`
+    );
+
+    // 只有當所有4張圖片都成功加載時，才顯示
+    if (loadedImages.length === imageUrls.length) {
+      console.log("✅ 所有圖片都已成功加載，準備顯示");
+      // 額外等待一點時間確保所有圖片都完全渲染到瀏覽器
+      setTimeout(() => {
+        votingImagesLoaded.value = true;
+        console.log("✅ 所有圖片現在已顯示");
+      }, 300);
+    } else {
+      // 如果部分圖片加載失敗，等待更長時間後再顯示（至少顯示已加載的）
+      console.warn(
+        `⚠️ 部分圖片加載失敗 (${loadedImages.length}/${imageUrls.length})，等待後顯示`
+      );
+      setTimeout(() => {
+        votingImagesLoaded.value = true;
+      }, 2000);
+    }
+  } else {
+    // 還有圖片未處理，繼續等待
+    const processedCount = imageLoadStatus.value.size;
+    console.log(`等待更多圖片加載... (${processedCount}/${imageUrls.length})`);
   }
 }
 
