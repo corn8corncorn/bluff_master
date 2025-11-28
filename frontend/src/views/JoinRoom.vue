@@ -54,23 +54,29 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
+import { useNotification } from '../composables/useNotification'
 
 const router = useRouter()
 const gameStore = useGameStore()
+const { error: showError } = useNotification()
 
 const roomCode = ref('')
 const nickname = ref('')
 const loading = ref(false)
 
 async function handleJoin() {
-  if (!roomCode.value.trim() || !nickname.value.trim()) return
+  // Trim 暱稱和房間代碼，並更新 ref 值讓 UI 顯示 trim 後的結果
+  nickname.value = nickname.value.trim()
+  roomCode.value = roomCode.value.trim()
+  
+  if (!roomCode.value || !nickname.value) return
 
   loading.value = true
   try {
     const room = await gameStore.joinRoom(roomCode.value.toUpperCase(), nickname.value)
     router.push(`/room/${room.id}`)
   } catch (error) {
-    alert(error.response?.data?.message || '加入房間失敗')
+    showError(error.response?.data?.message || '加入房間失敗')
   } finally {
     loading.value = false
   }
