@@ -17,10 +17,11 @@ if ! command -v mvn &> /dev/null; then
     exit 1
 fi
 
-echo "[資訊] 正在啟動後端服務..."
+echo "[資訊] 正在啟動後端服務（使用 dev profile）..."
 echo "[資訊] 後端將在 http://localhost:8080 啟動"
+echo "[資訊] 使用配置文件：application-dev.yml"
 echo ""
 
-# 啟動 Spring Boot
-mvn spring-boot:run
+# 啟動 Spring Boot（使用 dev profile）
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 

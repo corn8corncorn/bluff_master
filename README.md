@@ -200,12 +200,69 @@ npm run build
 
 2. 部署 `dist` 目錄到靜態檔案伺服器（如 Nginx）
 
+## Cloudflare Tunnel 遠端 DEMO
+
+如果要讓其他人透過網路訪問您的本地開發伺服器進行 DEMO，可以使用 Cloudflare Tunnel。
+
+### 前置需求
+
+1. **安裝 Cloudflare Tunnel**：
+   ```bash
+   # Windows (使用 winget)
+   winget install --id Cloudflare.cloudflared
+   
+   # macOS
+   brew install cloudflare/cloudflare/cloudflared
+   
+   # Linux
+   # 參考官方文檔：https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+   ```
+
+### 使用方式
+
+#### 方法 1: 使用完整啟動腳本（推薦）
+
+```bash
+# 自動啟動後端、前端和 Cloudflare Tunnel
+start-demo-full.bat
+```
+
+#### 方法 2: 手動啟動
+
+1. **確保後端和前端已啟動**：
+   - 後端：`http://localhost:8080`
+   - 前端：`http://localhost:3000`
+
+2. **啟動 Cloudflare Tunnel**：
+   ```bash
+   # Windows
+   start-demo.bat
+   
+   # 或 PowerShell
+   .\start-demo.ps1
+   ```
+
+3. **分享生成的 URL**：
+   Cloudflare Tunnel 會生成類似以下的 URL：
+   ```
+   https://xxxx-xxxx-xxxx.trycloudflare.com
+   ```
+   將此 URL 分享給其他人即可訪問您的本地 DEMO。
+
+### 注意事項
+
+- Cloudflare Tunnel URL 在每次啟動時會變化
+- 連接會在使用者關閉終端或中斷連接時自動關閉
+- 確保後端服務已啟動，否則前端無法正常工作
+- WebSocket 連接會通過 Cloudflare Tunnel 自動處理
+
 ## 注意事項
 
 1. **GCP Storage 設定**：需要建立 GCS Bucket 並設定適當的權限
 2. **圖片清理**：系統會自動清理超過 3 小時的圖片
 3. **斷線處理**：主講者斷線會自動結束當前回合
 4. **投票超時**：10 秒內未投票會自動扣 1 分
+5. **Cloudflare Tunnel**：僅用於 DEMO，生產環境請使用正式部署方案
 
 ## 授權
 

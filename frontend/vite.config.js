@@ -17,6 +17,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: '0.0.0.0', // 允許外部訪問
+    allowedHosts: [
+      'localhost',
+      '.trycloudflare.com', // 允許所有 Cloudflare Tunnel 域名
+      '.local'
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
