@@ -71,49 +71,13 @@ public class GameService {
             selectedImages.add(speakerImages.get(i));
         }
 
-        // 生成隨機假圖 URL（使用時間戳和隨機數確保每個回合的假圖都不同）
-        // 使用時間戳、回合數和隨機數組合來生成唯一的圖片 ID
-        long seed = System.currentTimeMillis() + room.getCurrentRound() * 10000L;
-        Random random = new Random(seed);
-        String fixedFakeImageUrl = null;
-        int maxAttempts = 30; // 增加嘗試次數
-        int attempts = 0;
-        
-        // 使用更大的 ID 範圍（1-1000），並結合時間戳確保唯一性
-        Set<Integer> triedIds = new HashSet<>(); // 記錄已嘗試的 ID，避免重複
-        
-        while (fixedFakeImageUrl == null && attempts < maxAttempts) {
-            // 每次嘗試使用不同的 ID（結合時間戳、回合數和隨機數）
-            int fakeImageId;
-            do {
-                // 使用時間戳的後幾位 + 回合數 + 隨機數來生成 ID
-                fakeImageId = (int) ((seed + attempts * 137 + random.nextInt(1000)) % 1000) + 1;
-            } while (triedIds.contains(fakeImageId) && triedIds.size() < 1000);
-            
-            triedIds.add(fakeImageId);
-            String initialFakeImageUrl = String.format("https://picsum.photos/id/%d/800/600", fakeImageId);
-            
-            // 獲取假圖的完整 URL（包括所有參數），並驗證圖片是否存在
-            String candidateUrl = getFinalImageUrl(initialFakeImageUrl);
-            if (candidateUrl != null && validateImageUrl(candidateUrl)) {
-                fixedFakeImageUrl = candidateUrl;
-                log.info("假圖 URL - 初始: {}, 最終: {}", initialFakeImageUrl, fixedFakeImageUrl);
-                break; // 找到有效的圖片，跳出循環
-            } else {
-                log.debug("假圖 URL 無效，重試中: {} (attempt {}/{})", candidateUrl, attempts + 1, maxAttempts);
-                attempts++;
-            }
-        }
-        
-        // 如果所有嘗試都失敗，使用時間戳生成一個唯一的隨機圖片 URL
-        if (fixedFakeImageUrl == null) {
-            // 使用時間戳和回合數生成一個唯一的 URL，即使驗證失敗也使用它
-            // 這樣可以確保每次都是不同的 URL
-            long uniqueId = System.currentTimeMillis() + room.getCurrentRound() * 1000000L;
-            int fallbackImageId = (int) (uniqueId % 1000) + 1;
-            fixedFakeImageUrl = String.format("https://picsum.photos/id/%d/800/600", fallbackImageId);
-            log.warn("所有假圖 URL 驗證失敗，使用基於時間戳的隨機 URL: {}", fixedFakeImageUrl);
-        }
+        // 生成隨機假圖 URL（使用時間戳和回合數確保每個回合的假圖都不同）
+        // 改用 picsum.photos 的 seed API：同一 seed 會得到同一張圖片，且服務會保證圖片存在
+        // 這樣可避免出現 "Image does not exist" 的無效 URL，同時確保所有玩家看到相同的假圖
+        long uniqueSeed = System.currentTimeMillis() + room.getCurrentRound() * 1000000L;
+        // seed 不能包含特殊字元，使用唯一 seed 確保每輪都不同，但同輪一致
+        String fixedFakeImageUrl = String.format("https://picsum.photos/seed/%d/800/600", uniqueSeed);
+        log.info("生成假圖 URL (seed: {}): {}", uniqueSeed, fixedFakeImageUrl);
         
         // 添加1張假圖（非所有玩家的圖片）
         selectedImages.add(fixedFakeImageUrl);
