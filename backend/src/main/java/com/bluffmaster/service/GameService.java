@@ -71,15 +71,26 @@ public class GameService {
             selectedImages.add(speakerImages.get(i));
         }
 
-        // 生成固定的假圖 URL（使用隨機 ID 確保每個回合的假圖不同，但同一回合所有玩家看到相同）
-        // 嘗試多個 ID 直到找到有效的圖片
-        Random random = new Random();
+        // 生成隨機假圖 URL（使用時間戳和隨機數確保每個回合的假圖都不同）
+        // 使用時間戳、回合數和隨機數組合來生成唯一的圖片 ID
+        long seed = System.currentTimeMillis() + room.getCurrentRound() * 10000L;
+        Random random = new Random(seed);
         String fixedFakeImageUrl = null;
-        int maxAttempts = 10;
+        int maxAttempts = 30; // 增加嘗試次數
         int attempts = 0;
         
+        // 使用更大的 ID 範圍（1-1000），並結合時間戳確保唯一性
+        Set<Integer> triedIds = new HashSet<>(); // 記錄已嘗試的 ID，避免重複
+        
         while (fixedFakeImageUrl == null && attempts < maxAttempts) {
-            int fakeImageId = random.nextInt(1000) + 1; // 1-1000
+            // 每次嘗試使用不同的 ID（結合時間戳、回合數和隨機數）
+            int fakeImageId;
+            do {
+                // 使用時間戳的後幾位 + 回合數 + 隨機數來生成 ID
+                fakeImageId = (int) ((seed + attempts * 137 + random.nextInt(1000)) % 1000) + 1;
+            } while (triedIds.contains(fakeImageId) && triedIds.size() < 1000);
+            
+            triedIds.add(fakeImageId);
             String initialFakeImageUrl = String.format("https://picsum.photos/id/%d/800/600", fakeImageId);
             
             // 獲取假圖的完整 URL（包括所有參數），並驗證圖片是否存在
@@ -89,15 +100,19 @@ public class GameService {
                 log.info("假圖 URL - 初始: {}, 最終: {}", initialFakeImageUrl, fixedFakeImageUrl);
                 break; // 找到有效的圖片，跳出循環
             } else {
-                log.warn("假圖 URL 無效，重試中: {} (attempt {}/{})", candidateUrl, attempts + 1, maxAttempts);
+                log.debug("假圖 URL 無效，重試中: {} (attempt {}/{})", candidateUrl, attempts + 1, maxAttempts);
                 attempts++;
             }
         }
         
-        // 如果所有嘗試都失敗，使用備用 URL
+        // 如果所有嘗試都失敗，使用時間戳生成一個唯一的隨機圖片 URL
         if (fixedFakeImageUrl == null) {
-            fixedFakeImageUrl = "https://picsum.photos/id/29/800/600.jpg?hmac=KbDC2qhBvoFM4XpOZrAnybO4JNiXS9mox0PORy6NCJA";
-            log.warn("所有假圖 URL 都無效，使用備用 URL: {}", fixedFakeImageUrl);
+            // 使用時間戳和回合數生成一個唯一的 URL，即使驗證失敗也使用它
+            // 這樣可以確保每次都是不同的 URL
+            long uniqueId = System.currentTimeMillis() + room.getCurrentRound() * 1000000L;
+            int fallbackImageId = (int) (uniqueId % 1000) + 1;
+            fixedFakeImageUrl = String.format("https://picsum.photos/id/%d/800/600", fallbackImageId);
+            log.warn("所有假圖 URL 驗證失敗，使用基於時間戳的隨機 URL: {}", fixedFakeImageUrl);
         }
         
         // 添加1張假圖（非所有玩家的圖片）
