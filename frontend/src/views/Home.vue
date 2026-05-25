@@ -1,5 +1,11 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-3 sm:p-4">
+  <div class="min-h-screen flex flex-col items-center justify-center p-3 sm:p-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+    <img
+      src="/images/logo.png"
+      alt="Bluff Master Logo"
+      class="w-64 sm:w-80 mb-6 sm:mb-8 drop-shadow-xl"
+    />
+
     <div class="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full mx-2">
       <div class="text-center mb-6 sm:mb-8">
         <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 mb-2">唬爛王</h1>

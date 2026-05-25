@@ -1,5 +1,10 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-3 sm:p-4">
+  <div class="min-h-screen flex flex-col items-center justify-center p-3 sm:p-4">
+    <img
+      src="/images/logo.png"
+      alt="Bluff Master Logo"
+      class="w-64 sm:w-80 mb-6 sm:mb-8 drop-shadow-xl"
+    />
     <div class="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full mx-2">
       <h2 class="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">創建房間</h2>
 
