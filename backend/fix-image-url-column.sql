@@ -10,6 +10,6 @@ ALTER TABLE round_images MODIFY COLUMN image_url TEXT;
 -- 修改 round_votes 表
 ALTER TABLE round_votes MODIFY COLUMN voted_image_url TEXT;
 
--- 修改 game_rounds 表的 fakeImageUrl 欄位
-ALTER TABLE game_rounds MODIFY COLUMN fake_image_url TEXT;
+-- 修改 game_rounds 表的 fakeImageUrl 欄位（開局時尚未選假圖，須允許 NULL）
+ALTER TABLE game_rounds MODIFY COLUMN fake_image_url TEXT NULL;
 

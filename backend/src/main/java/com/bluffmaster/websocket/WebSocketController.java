@@ -31,12 +31,11 @@ public class WebSocketController {
     @MessageMapping("/game/start-round")
     public void startRound(@Payload Map<String, String> payload) {
         String roomId = payload.get("roomId");
-        GameRoundDTO round = gameService.startRound(roomId);
-        
-        // 廣播回合開始
+        String playerId = payload.get("playerId");
+        GameRoundDTO round = gameService.startRound(roomId, playerId);
+
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
-        
-        // 廣播房間更新（更新回合數）
+
         RoomDTO room = roomService.getRoom(roomId);
         messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
     }
@@ -46,10 +45,9 @@ public class WebSocketController {
         String roundId = (String) payload.get("roundId");
         String playerId = (String) payload.get("playerId");
         String imageUrl = (String) payload.get("imageUrl");
-        
+
         gameService.vote(playerId, imageUrl, roundId);
-        
-        // 廣播投票狀態
+
         String roomId = (String) payload.get("roomId");
         Map<String, Object> voteStatus = Map.of(
             "playerId", playerId,
@@ -63,7 +61,8 @@ public class WebSocketController {
     public void nextPhase(@Payload Map<String, String> payload) {
         log.info("收到 next-phase 請求: {}", payload);
         String roundId = payload.get("roundId");
-        GameRoundDTO round = gameService.nextPhase(roundId);
+        String playerId = payload.get("playerId");
+        GameRoundDTO round = gameService.nextPhase(roundId, playerId);
         String roomId = round.getRoomId();
         log.info("廣播回合更新到房間 {}: phase={}, roundId={}", roomId, round.getPhase(), round.getId());
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
@@ -73,7 +72,8 @@ public class WebSocketController {
     public void startVoting(@Payload Map<String, String> payload) {
         log.info("收到 start-voting 請求: {}", payload);
         String roundId = payload.get("roundId");
-        GameRoundDTO round = gameService.startVoting(roundId);
+        String playerId = payload.get("playerId");
+        GameRoundDTO round = gameService.startVoting(roundId, playerId);
         String roomId = round.getRoomId();
         log.info("廣播回合更新到房間 {}: phase={}, roundId={}", roomId, round.getPhase(), round.getId());
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
@@ -82,23 +82,37 @@ public class WebSocketController {
     @MessageMapping("/game/reveal")
     public void revealResult(@Payload Map<String, String> payload) {
         String roundId = payload.get("roundId");
-        GameRoundDTO round = gameService.revealResult(roundId);
+        String playerId = payload.get("playerId");
+        GameRoundDTO round = gameService.revealResult(roundId, playerId);
         String roomId = round.getRoomId();
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+    }
+
+    @MessageMapping("/game/select-fake-theme")
+    public void selectFakeTheme(@Payload Map<String, String> payload) {
+        try {
+            String roundId = payload.get("roundId");
+            String playerId = payload.get("playerId");
+            String region = payload.get("region");
+            String category = payload.get("category");
+            GameRoundDTO round = gameService.selectFakeTheme(roundId, region, category, playerId);
+            String roomId = round.getRoomId();
+            messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
+        } catch (Exception e) {
+            log.error("select-fake-theme 失敗: {}", payload, e);
+        }
     }
 
     @MessageMapping("/game/finish-round")
     public void finishRound(@Payload Map<String, String> payload) {
         String roundId = payload.get("roundId");
-        GameRoundDTO round = gameService.finishRound(roundId);
+        String playerId = payload.get("playerId");
+        GameRoundDTO round = gameService.finishRound(roundId, playerId);
         String roomId = round.getRoomId();
-        
-        // 廣播回合結果
+
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round-result", round);
-        
-        // 廣播房間更新（更新玩家分數）
+
         RoomDTO room = roomService.getRoom(roomId);
         messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
     }
 }
-

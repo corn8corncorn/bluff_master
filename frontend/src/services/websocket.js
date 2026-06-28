@@ -28,7 +28,7 @@ async function connect(roomId, playerId, callbacks) {
 
     return new Promise((resolve, reject) => {
       stompClient.connect(
-        {},
+        { playerId: playerId || '', roomId: roomId || '' },
         () => {
           console.log("WebSocket 連接成功");
 
@@ -129,6 +129,12 @@ function sendRevealResult(stompClient, payload) {
   }
 }
 
+function sendSelectFakeTheme(stompClient, payload) {
+  if (stompClient && stompClient.connected) {
+    stompClient.send("/app/game/select-fake-theme", {}, JSON.stringify(payload));
+  }
+}
+
 function sendFinishRound(stompClient, payload) {
   if (stompClient && stompClient.connected) {
     stompClient.send("/app/game/finish-round", {}, JSON.stringify(payload));
@@ -143,5 +149,6 @@ export default {
   sendNextPhase,
   sendStartVoting,
   sendRevealResult,
+  sendSelectFakeTheme,
   sendFinishRound,
 };

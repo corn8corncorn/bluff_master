@@ -27,6 +27,17 @@
         </div>
       </div>
 
+      <!-- 遊戲已結束提示 -->
+      <div
+        v-if="room?.status === 'FINISHED'"
+        class="bg-amber-50 border border-amber-300 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-3 sm:mb-6"
+      >
+        <h3 class="text-lg font-bold text-amber-900 mb-2">本局遊戲已結束</h3>
+        <p class="text-sm text-amber-800">
+          最終分數如下。房主可點「再玩一局」重置房間，大家重新準備後即可開始新遊戲。
+        </p>
+      </div>
+
       <!-- 玩家列表 -->
       <div class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6 mb-3 sm:mb-6">
         <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">玩家列表</h3>
@@ -55,10 +66,23 @@
                 <div class="text-sm text-gray-500 mt-1">
                   圖片：{{ player.imageUrls?.length || 0 }} 張
                 </div>
+                <div
+                  v-if="room?.status === 'FINISHED'"
+                  class="text-sm text-purple-600 font-semibold mt-1"
+                >
+                  分數：{{ player.score || 0 }}
+                </div>
               </div>
               <div class="text-right">
                 <div v-if="player.isReady" class="text-green-500 font-semibold">✓ 已準備</div>
                 <div v-else class="text-gray-400">未準備</div>
+                <button
+                  v-if="isHost && !player.isHost && player.id !== currentPlayer?.id && room?.status === 'WAITING'"
+                  @click="handleKickPlayer(player.id)"
+                  class="mt-2 text-xs text-red-500 hover:text-red-700 underline"
+                >
+                  踢出
+                </button>
               </div>
             </div>
           </div>
@@ -81,7 +105,7 @@
           ref="fileInput"
           type="file"
           multiple
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
           @change="handleFileSelect"
           class="hidden"
         />
@@ -91,7 +115,7 @@
           :disabled="uploading || (currentPlayer?.isReady && room?.status === 'WAITING')"
           class="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {{ uploading ? '上傳中...' : (currentPlayer?.isReady && room?.status === 'WAITING') ? '已準備，無法上傳' : '選擇圖片' }}
+          {{ uploading ? uploadStatus || '上傳中...' : (currentPlayer?.isReady && room?.status === 'WAITING') ? '已準備，無法上傳' : '選擇圖片（支援 HEIC）' }}
         </button>
 
         <div v-if="currentPlayer?.imageUrls?.length > 0" class="mt-3 sm:mt-4 grid grid-cols-4 gap-1.5 sm:gap-2">
@@ -173,6 +197,14 @@
             </button>
 
             <button
+              v-if="isHost && room?.status === 'FINISHED'"
+              @click="handlePlayAgain"
+              class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-amber-500 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-amber-600 active:bg-amber-700 transition-colors"
+            >
+              再玩一局
+            </button>
+
+            <button
               v-if="isHost && canStartGame"
               @click="handleStartGame"
               class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors"
@@ -203,6 +235,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { useNotification } from '../composables/useNotification'
+import api from '../services/api'
+import { prepareFilesForUpload } from '../utils/imageUpload'
 
 const route = useRoute()
 const router = useRouter()
@@ -211,6 +245,7 @@ const { error: showError, success: showSuccess } = useNotification()
 
 const fileInput = ref(null)
 const uploading = ref(false)
+const uploadStatus = ref('')
 const rejoinNickname = ref('')
 const rejoining = ref(false)
 
@@ -257,7 +292,7 @@ const requiredImages = computed(() => {
   if (!room.value) return 0
   return room.value.gameMode === 'NORMAL'
     ? room.value.maxPlayers + 2
-    : 5
+    : 3
 })
 
 const canReady = computed(() => {
@@ -267,20 +302,18 @@ const canReady = computed(() => {
 onMounted(async () => {
   const roomId = route.params.roomId
   await gameStore.fetchRoom(roomId)
-  
+
   // 如果找不到玩家，不連接 WebSocket
   if (currentPlayer.value) {
     await gameStore.connectWebSocket(roomId, currentPlayer.value.id)
   }
 })
 
-onUnmounted(() => {
-  gameStore.disconnectWebSocket()
-})
+// 進入遊戲頁時保持 WebSocket，不在此斷線（避免誤標離線）
 
 async function handleFileSelect(event) {
-  const files = Array.from(event.target.files)
-  if (files.length === 0) return
+  const rawFiles = Array.from(event.target.files)
+  if (rawFiles.length === 0) return
 
   // 檢查當前玩家是否存在
   if (!currentPlayer.value || !currentPlayer.value.id) {
@@ -297,10 +330,14 @@ async function handleFileSelect(event) {
   }
 
   uploading.value = true
+  uploadStatus.value = '準備圖片中...'
   try {
-    await gameStore.uploadImages(files)
-    // 重新獲取房間資訊
-    await gameStore.fetchRoom(room.value.id)
+    const files = await prepareFilesForUpload(rawFiles, ({ current, total }) => {
+      uploadStatus.value = `處理圖片 ${current}/${total}...`
+    })
+    await gameStore.uploadImages(files, ({ current, total }) => {
+      uploadStatus.value = `上傳中 ${current}/${total}...`
+    })
     showSuccess('圖片上傳成功')
   } catch (error) {
     console.error('上傳圖片錯誤:', error)
@@ -312,7 +349,11 @@ async function handleFileSelect(event) {
     })
     // 從後端返回的錯誤訊息中提取詳細信息
     let errorMessage = '上傳失敗，請檢查圖片格式和大小'
-    if (error.response?.data) {
+    if (error.message && error.message.includes('timeout')) {
+      errorMessage = '上傳逾時，網路較慢時請一次選較少張數或稍後再試'
+    } else if (error.message && error.message.includes('HEIC')) {
+      errorMessage = error.message
+    } else if (error.response?.data) {
       if (typeof error.response.data === 'string') {
         errorMessage = error.response.data
       } else if (error.response.data.message) {
@@ -326,7 +367,8 @@ async function handleFileSelect(event) {
     showError(errorMessage)
   } finally {
     uploading.value = false
-    event.target.value = '' // 重置 input
+    uploadStatus.value = ''
+    event.target.value = ''
   }
 }
 
@@ -363,6 +405,17 @@ async function handleStartGame() {
   } catch (error) {
     console.error('開始遊戲錯誤:', error)
     const errorMessage = error.response?.data?.message || error.message || '開始遊戲失敗'
+    showError(errorMessage)
+  }
+}
+
+async function handlePlayAgain() {
+  try {
+    await gameStore.playAgain()
+    showSuccess('房間已重置，請大家重新準備')
+  } catch (error) {
+    console.error('再玩一局錯誤:', error)
+    const errorMessage = error.response?.data?.message || error.message || '操作失敗'
     showError(errorMessage)
   }
 }
@@ -428,6 +481,21 @@ async function handleRejoin() {
     showError(errorMessage)
   } finally {
     rejoining.value = false
+  }
+}
+
+async function handleKickPlayer(targetPlayerId) {
+  if (!room.value || !currentPlayer.value?.id) return
+
+  try {
+    await api.post(
+      `/rooms/${room.value.id}/host/${currentPlayer.value.id}/kick/${targetPlayerId}`
+    )
+    await gameStore.fetchRoom(room.value.id)
+    showSuccess('已踢出玩家')
+  } catch (error) {
+    console.error('踢出玩家錯誤:', error)
+    showError(error.response?.data?.message || error.message || '踢出玩家失敗')
   }
 }
 

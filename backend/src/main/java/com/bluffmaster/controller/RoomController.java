@@ -183,6 +183,11 @@ public class RoomController {
             @PathVariable String hostId,
             @PathVariable String targetPlayerId) {
         roomService.kickPlayer(hostId, targetPlayerId);
+
+        RoomDTO room = roomService.getRoom(roomId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
+        log.info("廣播房間更新: 房間 {} 有玩家被踢出", roomId);
+
         return ResponseEntity.ok().build();
     }
 
@@ -198,6 +203,16 @@ public class RoomController {
         log.info("廣播房間更新: 房間 {} 遊戲已開始", roomId);
         
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{roomId}/host/{hostId}/play-again")
+    public ResponseEntity<RoomDTO> playAgain(
+            @PathVariable String roomId,
+            @PathVariable String hostId) {
+        RoomDTO room = roomService.playAgain(hostId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
+        log.info("廣播房間更新: 房間 {} 準備再玩一局", roomId);
+        return ResponseEntity.ok(room);
     }
 
     @PostMapping("/{roomId}/leave")

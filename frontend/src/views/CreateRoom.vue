@@ -92,7 +92,7 @@ const gameStore = useGameStore()
 
 const nickname = ref('')
 const gameMode = ref('NORMAL')
-const maxPlayers = ref(2) // 默認 2 人，方便測試
+const maxPlayers = ref(2)
 const loading = ref(false)
 
 async function handleCreate() {
@@ -103,7 +103,7 @@ async function handleCreate() {
     const room = await gameStore.createRoom(nickname.value, gameMode.value, maxPlayers.value)
     router.push(`/room/${room.id}`)
   } catch (error) {
-    alert(error.response?.data?.message || '創建房間失敗')
+    alert(error.response?.data?.message || error.message || '創建房間失敗')
   } finally {
     loading.value = false
   }

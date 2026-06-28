@@ -1,7 +1,9 @@
 package com.bluffmaster.service;
 
 import com.bluffmaster.model.Player;
+import com.bluffmaster.model.Room;
 import com.bluffmaster.repository.PlayerRepository;
+import com.bluffmaster.repository.RoomRepository;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
@@ -38,6 +40,7 @@ import java.util.UUID;
 public class ImageService {
 
     private final PlayerRepository playerRepository;
+    private final RoomRepository roomRepository;
 
     @Value("${gcp.storage.bucket-name:}")
     private String bucketName;
@@ -125,10 +128,9 @@ public class ImageService {
                     i + 1, file.getOriginalFilename(), file.getSize(), file.getContentType());
                 
                 // 驗證文件類型
-                String contentType = file.getContentType();
-                if (contentType == null || !contentType.startsWith("image/")) {
-                    log.error("不支援的文件類型: {}", contentType);
-                    throw new RuntimeException("只支援圖片格式");
+                if (!isAllowedImageFile(file)) {
+                    log.error("不支援的文件類型: {}, 檔名: {}", file.getContentType(), file.getOriginalFilename());
+                    throw new RuntimeException("只支援 JPG、PNG、WEBP、GIF 等圖片格式");
                 }
 
                 // 壓縮圖片
@@ -226,17 +228,63 @@ public class ImageService {
     @Scheduled(fixedRate = 3600000) // 每小時檢查一次
     @Transactional
     public void cleanupOldImages() {
-        LocalDateTime threeHoursAgo = LocalDateTime.now().minusHours(3);
-        // 清理超過 3 小時的房間圖片
-        // 這裡可以根據實際需求實現清理邏輯
-        log.info("執行圖片清理任務");
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(3);
+        List<Player> players = playerRepository.findAll();
+        int cleaned = 0;
+        for (Player player : players) {
+            if (player.getImageUrls() == null || player.getImageUrls().isEmpty()) {
+                continue;
+            }
+            Room room = roomRepository.findById(player.getRoomId()).orElse(null);
+            if (room == null) {
+                continue;
+            }
+            boolean expired = room.getUpdatedAt() != null && room.getUpdatedAt().isBefore(cutoff);
+            if (expired && room.getStatus() != Room.RoomStatus.PLAYING) {
+                deletePlayerImages(player.getId());
+                cleaned++;
+            }
+        }
+        log.info("圖片清理任務完成，清理 {} 位玩家的過期圖片", cleaned);
+    }
+
+    private boolean isAllowedImageFile(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null && contentType.toLowerCase().startsWith("image/")) {
+            return true;
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null) {
+            return false;
+        }
+        String lower = filename.toLowerCase();
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".png") || lower.endsWith(".webp")
+                || lower.endsWith(".gif") || lower.endsWith(".heic")
+                || lower.endsWith(".heif");
+    }
+
+    private boolean isHeicFile(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            String lower = contentType.toLowerCase();
+            if (lower.contains("heic") || lower.contains("heif")) {
+                return true;
+            }
+        }
+        String filename = file.getOriginalFilename();
+        return filename != null
+                && (filename.toLowerCase().endsWith(".heic") || filename.toLowerCase().endsWith(".heif"));
     }
 
     private byte[] compressImage(MultipartFile file) throws IOException {
         try {
             BufferedImage originalImage = ImageIO.read(file.getInputStream());
             if (originalImage == null) {
-                log.error("無法讀取圖片，文件類型: {}", file.getContentType());
+                log.error("無法讀取圖片，文件類型: {}, 檔名: {}", file.getContentType(), file.getOriginalFilename());
+                if (isHeicFile(file)) {
+                    throw new RuntimeException("無法讀取 HEIC 格式，請重新上傳或改用 JPG");
+                }
                 throw new RuntimeException("無法讀取圖片，請確認文件格式正確");
             }
 

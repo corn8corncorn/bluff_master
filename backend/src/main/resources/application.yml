@@ -65,14 +65,21 @@ gcp:
 # Game Configuration
 game:
   max-players: 10
-  min-players: 4
+  min-players: 2
   max-image-size: 5242880 # 5MB in bytes
   image-compression:
     min-width: 720
     max-width: 1080
   voting-timeout: 10 # seconds
   room-timeout: 10800 # 3 hours in seconds
-  fake-image-url: ${FAKE_IMAGE_URL:https://picsum.photos/800/600}
+  fake-image-url: ${FAKE_IMAGE_URL:/api/images/fake/stock_01.jpg}
+  fake-image:
+    enable-openverse: true
+    enable-wikimedia: true
+    enable-unsplash: true
+    enable-lorem-flickr: true
+    unsplash-access-key: ${UNSPLASH_ACCESS_KEY:}
+    fetch-timeout-ms: 30000
 
 logging:
   level:

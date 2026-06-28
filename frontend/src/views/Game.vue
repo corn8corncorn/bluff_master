@@ -47,15 +47,77 @@
           <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">
             講故事階段
           </h3>
-          <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
-            請為您的四張圖片講述故事
-          </p>
-          <button
-            @click="handleNextPhase"
-            class="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors"
+
+          <!-- 步驟一：選擇地區 -->
+          <div v-if="!fakeThemeSelected && !selectedFakeRegion" class="mb-4">
+            <p class="text-sm sm:text-base text-gray-600 mb-3">
+              步驟 1：選擇假圖的國家／地區
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 max-h-64 overflow-y-auto pr-1">
+              <button
+                v-for="region in fakeThemeRegions"
+                :key="region.id"
+                @click="selectedFakeRegion = region.id"
+                class="px-4 py-3 rounded-lg border-2 border-purple-200 bg-purple-50 text-purple-800 font-semibold hover:bg-purple-100 hover:border-purple-400 transition-colors"
+              >
+                {{ region.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 步驟二：選擇類別 -->
+          <div
+            v-else-if="!fakeThemeSelected && selectedFakeRegion"
+            class="mb-4"
           >
-            完成講故事，進入發問階段
-          </button>
+            <p class="text-sm sm:text-base text-gray-600 mb-1">
+              步驟 2：選擇主題類別
+            </p>
+            <p class="text-xs text-purple-600 mb-3">
+              已選地區：{{ regionLabel(selectedFakeRegion) }}
+              <button
+                @click="selectedFakeRegion = null"
+                class="ml-2 underline text-gray-500"
+              >
+                重選
+              </button>
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+              <button
+                v-for="category in fakeThemeCategories"
+                :key="category.id"
+                @click="handleSelectFakeTheme(category.id)"
+                :disabled="selectingFakeTheme"
+                class="px-3 py-2.5 rounded-lg border-2 border-blue-200 bg-blue-50 text-blue-800 text-sm font-semibold hover:bg-blue-100 hover:border-blue-400 transition-colors disabled:opacity-50"
+              >
+                {{ category.label }}
+              </button>
+            </div>
+            <p v-if="selectingFakeTheme" class="text-sm text-gray-500 mt-2 text-center">
+              正在從網路抽取主題圖片，可能需要 10～20 秒...
+            </p>
+            <p v-if="fakeThemeError" class="text-sm text-red-600 mt-2 text-center">
+              {{ fakeThemeError }}
+            </p>
+          </div>
+
+          <!-- 已選主題，開始講故事 -->
+          <template v-else-if="fakeThemeSelected">
+            <div class="mb-4 p-3 bg-green-50 border border-green-300 rounded-lg">
+              <p class="text-sm text-green-800">
+                假圖主題：<span class="font-semibold">{{ currentRound.fakeThemeLabel }}</span>
+              </p>
+              <p class="text-xs text-green-700 mt-1">
+                系統已隨機選好一張主題圖片，請依圖片編號（1～{{ expectedImageCount }}）為各張圖片講述故事
+              </p>
+            </div>
+            <button
+              @click="handleNextPhase"
+              class="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-purple-600 active:bg-purple-700 transition-colors"
+            >
+              完成講故事，進入發問階段
+            </button>
+          </template>
         </div>
 
         <!-- 發問階段 -->
@@ -74,13 +136,13 @@
           </button>
         </div>
 
-        <!-- 投票階段 - 主講者查看圖片（不可投票） -->
+        <!-- 投票階段 - 主講者等待其他玩家猜測 -->
         <div v-if="currentRound.phase === 'VOTING'">
           <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">
             投票階段
           </h3>
           <p class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-            其他玩家正在投票中，您可以查看圖片但無法投票
+            系統假圖已固定，請等待其他玩家猜測哪張是唬爛圖片。
           </p>
           <div
             v-if="votingTimeLeft <= 0"
@@ -91,17 +153,24 @@
             </p>
           </div>
 
-          <!-- 圖片網格（所有圖片同時渲染，但用遮罩覆蓋直到全部加載完成） -->
           <div
             v-if="currentRound.imageUrls && currentRound.imageUrls.length > 0"
             class="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-4"
+            :class="{
+              'opacity-50': votingTimeLeft <= 0,
+            }"
           >
             <div
               v-for="(imageUrl, index) in currentRound.imageUrls"
-              :key="`speaker-img-${imageUrl}-${index}`"
+              :key="`speaker-wait-${imageUrl}-${index}`"
               class="relative aspect-square rounded-lg overflow-hidden"
             >
-              <!-- 在DOM中渲染圖片以觸發瀏覽器加載，但在未加載完成前完全隱藏 -->
+              <span
+                v-if="votingImagesLoaded"
+                class="absolute top-2 left-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-sm font-bold text-white pointer-events-none"
+              >
+                {{ index + 1 }}
+              </span>
               <img
                 :src="imageUrl"
                 alt="投票圖片"
@@ -113,7 +182,6 @@
                   transition: 'opacity 0.3s',
                 }"
               />
-              <!-- 加載中的遮罩層（始終顯示在圖片上方，直到所有圖片加載完成） -->
               <div
                 v-if="!votingImagesLoaded"
                 class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-10 rounded-lg"
@@ -137,6 +205,13 @@
               </div>
             </div>
           </div>
+
+          <div
+            v-if="votingImagesLoaded && votingTimeLeft > 0"
+            class="text-center text-purple-600 text-sm font-medium"
+          >
+            其他玩家投票中… 剩餘 {{ votingTimeLeft }} 秒
+          </div>
         </div>
       </div>
 
@@ -158,8 +233,14 @@
           <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">
             講故事階段
           </h3>
-          <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
-            請聆聽主講者講述故事
+          <p
+            v-if="!fakeThemeSelected"
+            class="text-sm sm:text-base text-amber-600 mb-3 sm:mb-4"
+          >
+            等待主講者選擇假圖主題...
+          </p>
+          <p v-else class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
+            請聆聽主講者講述故事，可以點選下方小圖放大觀看。
           </p>
         </div>
 
@@ -169,7 +250,7 @@
             發問階段
           </h3>
           <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
-            您可以向主講者發問
+            您可以向主講者發問（請以圖片編號指稱，如：第 2 張）
           </p>
         </div>
 
@@ -204,6 +285,12 @@
                   selectedImage === imageUrl && votingImagesLoaded,
               }"
             >
+              <span
+                v-if="votingImagesLoaded"
+                class="absolute top-2 left-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-sm font-bold text-white pointer-events-none"
+              >
+                {{ index + 1 }}
+              </span>
               <!-- 在DOM中渲染圖片以觸發瀏覽器加載，但在未加載完成前完全隱藏 -->
               <img
                 :src="imageUrl"
@@ -280,10 +367,10 @@
           投票結果
         </h3>
         <div class="mb-4 p-4 bg-purple-50 rounded-lg">
-          <div class="font-semibold text-purple-800">主講者說謊的圖片是：</div>
+          <div class="font-semibold text-purple-800">系統唬爛圖片是：</div>
           <img
-            :src="currentRound.speakerFakeImageUrl || currentRound.fakeImageUrl"
-            alt="說謊圖片"
+            :src="currentRound.fakeImageUrl"
+            alt="系統假圖"
             class="mt-2 w-32 h-32 object-cover rounded-lg"
           />
         </div>
@@ -295,12 +382,9 @@
             class="relative aspect-square rounded-lg overflow-hidden"
             :class="{
               'ring-4 ring-red-500':
-                imageUrl ===
-                (currentRound.speakerFakeImageUrl || currentRound.fakeImageUrl),
+                imageUrl === currentRound.fakeImageUrl,
               'ring-4 ring-green-500':
-                imageUrl !==
-                  (currentRound.speakerFakeImageUrl ||
-                    currentRound.fakeImageUrl) &&
+                imageUrl !== currentRound.fakeImageUrl &&
                 currentRound.votes &&
                 Object.values(currentRound.votes).includes(imageUrl),
             }"
@@ -311,13 +395,10 @@
               class="w-full h-full object-cover"
             />
             <div
-              v-if="
-                imageUrl ===
-                (currentRound.speakerFakeImageUrl || currentRound.fakeImageUrl)
-              "
+              v-if="imageUrl === currentRound.fakeImageUrl"
               class="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-sm font-semibold"
             >
-              說謊圖片
+              唬爛圖片（系統）
             </div>
           </div>
         </div>
@@ -538,8 +619,8 @@
           !currentRound.isFinished &&
           currentRound.imageUrls &&
           currentRound.imageUrls.length > 0 &&
-          (currentRound.phase === 'STORY_TELLING' ||
-            currentRound.phase === 'QUESTIONING')
+          (currentRound.phase === 'QUESTIONING' ||
+            (currentRound.phase === 'STORY_TELLING' && fakeThemeSelected))
         "
         class="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-6 mb-3 sm:mb-6"
       >
@@ -548,20 +629,37 @@
         </h3>
         <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
           主講者：{{ speakerNickname }}
+          <span
+            v-if="isSpeaker && currentRound.fakeThemeLabel"
+            class="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded"
+          >
+            {{ currentRound.fakeThemeLabel }}
+          </span>
         </p>
         <p class="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">
-          請為這4張圖片講述故事（包含1張假圖）
+          <template v-if="isSpeaker">
+            共 {{ expectedImageCount }} 張圖片（包含 1 張主題假圖），已編號供講故事時指稱
+          </template>
+          <template v-else>
+            共 {{ expectedImageCount }} 張圖片，已編號供發問時指稱
+          </template>
         </p>
         <div class="grid grid-cols-2 gap-2 sm:gap-4">
           <div
             v-for="(imageUrl, index) in currentRound.imageUrls"
             :key="index"
             class="relative aspect-square rounded-lg overflow-hidden cursor-pointer"
-            @click="enlargedImage = imageUrl"
+            @click="openEnlargedImage(imageUrl, index)"
           >
+            <span
+              class="absolute top-2 left-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-sm font-bold text-white pointer-events-none"
+              aria-hidden="true"
+            >
+              {{ index + 1 }}
+            </span>
             <img
               :src="imageUrl"
-              alt="主講者圖片"
+              :alt="`主講者圖片 ${index + 1}`"
               class="w-full h-full object-cover"
             />
           </div>
@@ -614,7 +712,13 @@
       @click="closeEnlargedImage"
       class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 cursor-pointer"
     >
-      <div class="max-w-4xl max-h-[90vh] p-4">
+      <div class="relative max-w-4xl max-h-[90vh] p-4">
+        <div
+          v-if="enlargedImageNumber"
+          class="absolute top-6 left-6 z-10 rounded-full bg-black/70 px-3 py-1 text-sm font-semibold text-white pointer-events-none"
+        >
+          第 {{ enlargedImageNumber }} 張
+        </div>
         <img
           :src="enlargedImage"
           alt="放大圖片"
@@ -704,12 +808,20 @@
             </div>
           </div>
 
-          <button
-            @click="closeFinalResultModal"
-            class="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg font-semibold text-sm sm:text-lg hover:bg-purple-600 active:bg-purple-700 transition-colors"
-          >
-            返回首頁
-          </button>
+          <div class="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              @click="returnToRoom"
+              class="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-green-500 text-white rounded-lg font-semibold text-sm sm:text-lg hover:bg-green-600 active:bg-green-700 transition-colors"
+            >
+              回到房間
+            </button>
+            <button
+              @click="closeFinalResultModal"
+              class="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-purple-500 text-white rounded-lg font-semibold text-sm sm:text-lg hover:bg-purple-600 active:bg-purple-700 transition-colors"
+            >
+              返回首頁
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -720,21 +832,32 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useGameStore } from "../stores/game";
+import { getRegionLabel } from "../constants/fakeImageThemes";
 
 const route = useRoute();
 const router = useRouter();
 const gameStore = useGameStore();
 
+const fakeThemeRegions = computed(() => gameStore.fakeThemeRegions);
+const fakeThemeCategories = computed(() => gameStore.fakeThemeCategories);
+
+function regionLabel(id) {
+  return getRegionLabel(id, fakeThemeRegions.value);
+}
+
 const selectedImage = ref(null);
 const selectedSpeakerImage = ref(null);
-const selectedSpeakerFakeImage = ref(null);
 const votingTimeLeft = ref(10);
 const enlargedImage = ref(null);
+const enlargedImageNumber = ref(null);
 const shuffledSpeakerImages = ref([]);
 const displayedSpeakerImages = ref([]);
 const showFinalResultModal = ref(false);
 const votingImagesLoaded = ref(false);
-const imageLoadStatus = ref(new Map()); // 追蹤每張圖片的加載狀態
+const imageLoadStatus = ref(new Map());
+const selectedFakeRegion = ref(null);
+const selectingFakeTheme = ref(false);
+const fakeThemeError = ref(null);
 let votingTimer = null;
 
 const room = computed(() => gameStore.room);
@@ -811,6 +934,22 @@ const isLastRound = computed(() => {
 
 const isSpeaker = computed(() => {
   return currentRound.value?.speakerId === gameStore.currentPlayer?.id;
+});
+
+const fakeThemeSelected = computed(() => {
+  return !!(
+    currentRound.value?.fakeThemeSelected ||
+    currentRound.value?.fakeImageUrl
+  );
+});
+
+// 本回合應顯示的圖片數
+const expectedImageCount = computed(() => {
+  if (currentRound.value?.imageUrls?.length && fakeThemeSelected.value) {
+    return currentRound.value.imageUrls.length;
+  }
+  const realCount = room.value?.gameMode === "QUICK" ? 3 : 4;
+  return fakeThemeSelected.value ? realCount : realCount - 1;
 });
 
 // 獲取主講者暱稱
@@ -895,13 +1034,16 @@ function updateDisplayedSpeakerImages() {
 
 onMounted(async () => {
   const roomId = route.params.roomId;
-  await gameStore.fetchRoom(roomId);
+  await Promise.all([
+    gameStore.fetchFakeThemeOptions(),
+    gameStore.fetchRoom(roomId),
+  ]);
+
+  // 連接 WebSocket（若從房間頁過來可能已連線）
+  await gameStore.connectWebSocket(roomId, gameStore.currentPlayer?.id);
 
   // 嘗試獲取當前的回合（如果存在）
   await gameStore.fetchCurrentRound(roomId);
-
-  // 連接 WebSocket（現在會等待連接成功）
-  await gameStore.connectWebSocket(roomId, gameStore.currentPlayer?.id);
 
   console.log("onMounted: WebSocket 連接狀態", {
     hasConnection: !!gameStore.connection,
@@ -919,8 +1061,8 @@ onMounted(async () => {
   if (isHost.value && !currentRound.value && room.value?.status === "PLAYING") {
     console.log("onMounted: 房主開始第一輪");
     try {
-      gameStore.startRound();
-      console.log("onMounted: startRound 已調用");
+      await gameStore.startRound();
+      console.log("onMounted: startRound 已完成");
     } catch (error) {
       console.error("onMounted: 開始回合失敗", error);
     }
@@ -970,7 +1112,7 @@ watch(
     updateDisplayedSpeakerImages();
     // 重置主講者相關狀態
     selectedSpeakerImage.value = null;
-    enlargedImage.value = null;
+    closeEnlargedImage();
   },
   { deep: true }
 );
@@ -1004,11 +1146,11 @@ watch(
   () => currentRound.value?.id,
   async (newRoundId, oldRoundId) => {
     if (newRoundId && newRoundId !== oldRoundId) {
-      // 新回合開始，重置投票狀態
       selectedImage.value = null;
       selectedSpeakerImage.value = null;
-      selectedSpeakerFakeImage.value = null;
-      enlargedImage.value = null;
+      selectedFakeRegion.value = null;
+      selectingFakeTheme.value = false;
+      closeEnlargedImage();
       votingTimeLeft.value = 10;
 
       // 如果當前玩家是主講者，重新獲取房間信息以確保圖片數據是最新的
@@ -1090,7 +1232,6 @@ watch(
     if (newPhase === "VOTING") {
       console.log("進入投票階段，重置投票狀態並開始倒數");
       selectedImage.value = null;
-      selectedSpeakerFakeImage.value = null;
       // 重置圖片加載狀態
       votingImagesLoaded.value = false;
       imageLoadStatus.value.clear();
@@ -1112,7 +1253,6 @@ watch(
     if (newPhase === "QUESTIONING") {
       console.log("進入發問階段");
       selectedImage.value = null;
-      selectedSpeakerFakeImage.value = null;
       if (votingTimer) {
         clearInterval(votingTimer);
         votingTimer = null;
@@ -1122,38 +1262,39 @@ watch(
   { immediate: true }
 );
 
-// 監聽投票圖片 URLs 變化，確保所有4張圖片都準備好後再預載
+// 監聽投票圖片 URLs 變化，確保所有圖片都準備好後再預載
 watch(
   () => currentRound.value?.imageUrls,
   async (newImageUrls, oldImageUrls) => {
-    // 只有在投票階段且圖片URLs確實變化時才處理
     if (
       currentRound.value?.phase === "VOTING" &&
       newImageUrls &&
       newImageUrls.length > 0
     ) {
-      // 確保有4張圖片URL（3張真圖 + 1張假圖）
-      if (newImageUrls.length === 4) {
-        // 檢查URLs是否真的變化（避免重複加載）
+      const count = expectedImageCount.value;
+      if (newImageUrls.length === count) {
         if (JSON.stringify(newImageUrls) !== JSON.stringify(oldImageUrls)) {
-          console.log("投票圖片URLs變化，開始預載所有4張圖片");
           votingImagesLoaded.value = false;
           await preloadVotingImages();
         } else if (!votingImagesLoaded.value) {
-          // 如果URLs沒變化但還沒加載，也開始加載
-          console.log("投票圖片URLs未變化，但尚未加載，開始預載");
           await preloadVotingImages();
         }
       } else {
-        // 如果圖片數量不對，等待
-        console.log(
-          `投票圖片URLs數量不正確 (${newImageUrls.length}/4)，等待...`
-        );
         votingImagesLoaded.value = false;
       }
     }
   },
   { deep: true, immediate: false }
+);
+
+// 同步伺服器投票截止時間
+watch(
+  () => currentRound.value?.votingEndsAt,
+  () => {
+    if (currentRound.value?.phase === "VOTING") {
+      syncVotingTimeLeft();
+    }
+  }
 );
 
 onUnmounted(() => {
@@ -1163,24 +1304,40 @@ onUnmounted(() => {
   gameStore.disconnectWebSocket();
 });
 
+function syncVotingTimeLeft() {
+  const endsAt = currentRound.value?.votingEndsAt;
+  if (endsAt) {
+    const endMs = new Date(endsAt).getTime();
+    if (!Number.isNaN(endMs)) {
+      votingTimeLeft.value = Math.max(
+        0,
+        Math.ceil((endMs - Date.now()) / 1000)
+      );
+      return;
+    }
+  }
+  if (currentRound.value?.votingTimeLeft != null) {
+    votingTimeLeft.value = currentRound.value.votingTimeLeft;
+  }
+}
+
 function startVotingTimer() {
-  votingTimeLeft.value = 10;
+  syncVotingTimeLeft();
   if (votingTimer) {
     clearInterval(votingTimer);
   }
   votingTimer = setInterval(() => {
-    votingTimeLeft.value--;
+    syncVotingTimeLeft();
     if (votingTimeLeft.value <= 0) {
       clearInterval(votingTimer);
-      // 投票時間結束，鎖定投票並自動進入公布結果階段
-      // 由主講者或房主觸發（主講者優先）
+      votingTimer = null;
+      // 後端也會自動公布；此處由主講者或房主提前觸發作為備援
       if (
         currentRound.value &&
         currentRound.value.phase === "VOTING" &&
         !currentRound.value.isFinished
       ) {
         if (isSpeaker.value || isHost.value) {
-          console.log("投票時間結束，自動進入公布結果階段");
           gameStore.revealResult();
         }
       }
@@ -1205,39 +1362,45 @@ function handleVote(imageUrl) {
   gameStore.vote(imageUrl);
 }
 
-function isSpeakerImage(imageUrl) {
-  // 檢查圖片是否屬於主講者（不在 currentRound.imageUrls 中的假圖）
-  // 如果圖片在主講者的 imageUrls 中，則返回 true
-  if (!gameStore.currentPlayer?.imageUrls || !imageUrl) {
-    return false;
-  }
-  return gameStore.currentPlayer.imageUrls.includes(imageUrl);
-}
-
-function handleSpeakerFakeImageSelect(imageUrl) {
-  if (currentRound.value?.phase !== "VOTING" || !isSpeaker.value) {
-    return;
-  }
-
-  // 如果投票倒數已結束，不能再選擇
-  if (votingTimeLeft.value <= 0) {
-    return;
-  }
-
-  // 只能選擇主講者自己的圖片，不能選擇假圖
-  if (!isSpeakerImage(imageUrl)) {
-    return;
-  }
-
-  selectedSpeakerFakeImage.value = imageUrl;
-  gameStore.vote(imageUrl);
-}
-
 function handleNextPhase() {
   if (isSpeaker.value && currentRound.value?.phase === "STORY_TELLING") {
+    if (!fakeThemeSelected.value) return;
     gameStore.nextPhase();
   }
 }
+
+function handleSelectFakeTheme(categoryId) {
+  if (!selectedFakeRegion.value || selectingFakeTheme.value) return;
+  selectingFakeTheme.value = true;
+  fakeThemeError.value = null;
+  gameStore
+    .selectFakeTheme(selectedFakeRegion.value, categoryId)
+    .catch((error) => {
+      const backendMsg = error.response?.data?.message;
+      const msg =
+        backendMsg ||
+        error.message ||
+        "抽取假圖失敗，請重試";
+      fakeThemeError.value = msg;
+      console.error("handleSelectFakeTheme 失敗:", backendMsg || error.message, error.response?.data);
+    })
+    .finally(() => {
+      if (!fakeThemeSelected.value) {
+        selectingFakeTheme.value = false;
+      }
+    });
+}
+
+watch(
+  () => currentRound.value?.fakeThemeSelected,
+  (selected) => {
+    if (selected) {
+      selectingFakeTheme.value = false;
+      fakeThemeError.value = null;
+      selectedFakeRegion.value = null;
+    }
+  }
+);
 
 function handleStartVoting() {
   if (isSpeaker.value && currentRound.value?.phase === "QUESTIONING") {
@@ -1247,14 +1410,12 @@ function handleStartVoting() {
 
 // 預載所有投票圖片，重置加載狀態（圖片會在DOM中自動加載）
 function preloadVotingImages() {
-  // 確保有圖片URLs且數量正確（應該是4張）
+  const count = expectedImageCount.value;
   if (
     !currentRound.value?.imageUrls ||
     currentRound.value.imageUrls.length === 0
   ) {
-    console.log("預載圖片: 圖片URLs不存在或為空，等待...");
     votingImagesLoaded.value = false;
-    // 如果圖片URLs還沒準備好，等待一段時間後重試
     setTimeout(() => {
       if (
         currentRound.value?.imageUrls &&
@@ -1266,16 +1427,12 @@ function preloadVotingImages() {
     return;
   }
 
-  // 確保有4張圖片
-  if (currentRound.value.imageUrls.length !== 4) {
-    console.log(
-      `預載圖片: 圖片數量不正確 (${currentRound.value.imageUrls.length}/4)，等待...`
-    );
+  if (currentRound.value.imageUrls.length !== count) {
     votingImagesLoaded.value = false;
     setTimeout(() => {
       if (
         currentRound.value?.imageUrls &&
-        currentRound.value.imageUrls.length === 4
+        currentRound.value.imageUrls.length === count
       ) {
         preloadVotingImages();
       }
@@ -1283,25 +1440,17 @@ function preloadVotingImages() {
     return;
   }
 
-  console.log(
-    "預載圖片: 重置加載狀態，等待DOM中的圖片加載",
-    currentRound.value.imageUrls
-  );
-  // 重置加載狀態，圖片會在DOM中自動加載，@load事件會觸發handleImageLoad
   votingImagesLoaded.value = false;
   imageLoadStatus.value.clear();
 
-  // 等待DOM更新後，檢查圖片是否已經在緩存中（如果是刷新頁面，圖片可能已加載）
   nextTick(() => {
     setTimeout(() => {
       checkCachedImages();
     }, 100);
   });
 
-  // 設置超時，如果10秒內還沒加載完成，也顯示（避免無限等待）
   setTimeout(() => {
     if (!votingImagesLoaded.value) {
-      console.warn("⚠️ 圖片加載超時，強制顯示已加載的圖片");
       votingImagesLoaded.value = true;
     }
   }, 10000);
@@ -1310,7 +1459,8 @@ function preloadVotingImages() {
 // 檢查已緩存的圖片（如果圖片已經在瀏覽器緩存中，load事件可能不會觸發）
 function checkCachedImages() {
   const imageUrls = currentRound.value?.imageUrls;
-  if (!imageUrls || imageUrls.length === 0 || imageUrls.length !== 4) {
+  const count = expectedImageCount.value;
+  if (!imageUrls || imageUrls.length === 0 || imageUrls.length !== count) {
     return;
   }
 
@@ -1397,17 +1547,15 @@ function handleImageError(event, imageUrl, index) {
 // 檢查所有圖片是否都已加載完成
 function checkAllImagesLoaded() {
   const imageUrls = currentRound.value?.imageUrls;
+  const count = expectedImageCount.value;
   if (!imageUrls || imageUrls.length === 0) {
     return;
   }
 
-  // 確保有4張圖片
-  if (imageUrls.length !== 4) {
-    console.log(`等待圖片URLs準備完成 (${imageUrls.length}/4)...`);
+  if (imageUrls.length !== count) {
     return;
   }
 
-  // 檢查所有4張圖片是否都已處理（加載成功或失敗）
   const allProcessed = imageUrls.every((url) => imageLoadStatus.value.has(url));
 
   if (allProcessed && imageUrls.length === imageLoadStatus.value.size) {
@@ -1445,20 +1593,14 @@ function checkAllImagesLoaded() {
   }
 }
 
-function handleSpeakerImageClick(imageUrl) {
-  // 點擊主講者圖片時放大顯示
-  if (enlargedImage.value === imageUrl) {
-    // 如果已經放大，點擊關閉
-    closeEnlargedImage();
-  } else {
-    // 否則放大顯示
-    enlargedImage.value = imageUrl;
-    selectedSpeakerImage.value = imageUrl;
-  }
+function openEnlargedImage(imageUrl, index) {
+  enlargedImage.value = imageUrl;
+  enlargedImageNumber.value = index + 1;
 }
 
 function closeEnlargedImage() {
   enlargedImage.value = null;
+  enlargedImageNumber.value = null;
 }
 
 function getPhaseName(phase) {
@@ -1501,6 +1643,14 @@ async function handleNextRound() {
 function closeFinalResultModal() {
   showFinalResultModal.value = false;
   router.push("/");
+}
+
+function returnToRoom() {
+  showFinalResultModal.value = false;
+  gameStore.currentRound = null;
+  if (room.value?.id) {
+    router.push(`/room/${room.value.id}`);
+  }
 }
 
 // 判斷玩家是否為唬爛王（分數最高）

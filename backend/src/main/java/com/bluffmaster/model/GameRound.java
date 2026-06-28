@@ -1,7 +1,6 @@
 package com.bluffmaster.model;
 
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
+import jakarta.persistence.*;import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -36,8 +35,16 @@ public class GameRound {
     @Column(name = "image_url", columnDefinition = "TEXT")
     private List<String> imageUrls;  // 包含 3 真圖 + 1 假圖
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String fakeImageUrl;  // 假圖 URL
+    @Column(nullable = true, columnDefinition = "TEXT")
+    private String fakeImageUrl;  // 假圖 URL（主講者選主題後填入）
+
+    @Enumerated(EnumType.STRING)
+    @Column
+    private FakeImageRegion fakeImageRegion;  // 假圖地區
+
+    @Enumerated(EnumType.STRING)
+    @Column
+    private FakeImageCategory fakeImageCategory;  // 假圖類別
 
     @Column(columnDefinition = "TEXT")
     private String speakerFakeImageUrl;  // 主講者選擇的說謊圖片 URL
@@ -60,6 +67,9 @@ public class GameRound {
 
     @Column
     private LocalDateTime finishedAt;
+
+    @Column
+    private LocalDateTime votingEndsAt;  // 投票截止時間（伺服器權威）
 
     public enum RoundPhase {
         STORY_TELLING,  // 講故事階段
