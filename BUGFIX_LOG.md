@@ -15,7 +15,7 @@
 | B1 | High | `frontend/vite.config.js` | Proxy `/api` 未開 `ws: true` | ✅ 已修 |
 | B2 | High | `backend/start.sh` | 無 JAR 後備；與 bat 不一致 | ✅ 已修 |
 | B3 | Medium | 啟動 bat 腳本 | JAR 路徑使用 `\` | ✅ 已修 |
-| B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | 根目錄 `start.sh` + 對齊 full 腳本 |
+| B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | ✅ 已修 |
 | B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | 預設 exclude Redis（與 dev 一致） |
 | B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
@@ -67,4 +67,14 @@
 - **改哪裡**：`backend/start.sh`
 - **為什麼**：Linux 腳本先前只走 Maven，無 JAR 時無法啟動，且與 Windows bat 行為不一致
 - **怎麼改**：有 `target/bluff-master-backend-1.0.0.jar` 則 `java -Dspring.profiles.active=dev -jar ...`；否則檢查 Maven 後 `mvn spring-boot:run -Dspring-boot.run.profiles=dev`；路徑用 `/`
+- **狀態**：已完成
+
+### 2026-11-03 — B4 根目錄一鍵啟動 + cross-env
+
+- **改哪裡**：`start-demo.bat`、根目錄 `start.sh`、根目錄 `package.json`、`frontend/package.json`（及 lockfile）
+- **為什麼**：`start-demo.bat` 先前不啟動後端；Linux 無對應一鍵腳本；環境變數需跨平台 `cross-env`
+- **怎麼改**：
+  1. `start-demo.bat` 對齊 `start-demo-full.bat`：自動啟動後端（JAR 或 Maven）再前端與 Tunnel
+  2. 新增根目錄 `start.sh`（後端 + 前端 + Tunnel，路徑 `/`；註解說明 `chmod +x start.sh`）
+  3. 新增根目錄 `package.json`；前後端 scripts 以 `cross-env` 設定 `NODE_ENV`（原先無 `set NODE_ENV=`）
 - **狀態**：已完成

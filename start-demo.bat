@@ -30,14 +30,20 @@ echo ============================================
 echo   步驟 1: 啟動後端服務 (端口 8080)
 echo ============================================
 echo.
-echo 檢查後端服務是否已在 http://localhost:8080 運行...
-echo.
-echo 如果後端未啟動，有兩種方式：
-echo   1. 使用 start-jar.bat（推薦，無需 Maven）
-echo   2. 手動執行: cd backend ^&^& start-jar.bat
-echo.
-echo 等待 3 秒後繼續...
-timeout /t 3 /nobreak >nul
+
+cd backend
+REM 優先使用 JAR 啟動（不需要 Maven），如果 JAR 不存在則使用 Maven
+if exist "target/bluff-master-backend-1.0.0.jar" (
+    echo [資訊] 使用已編譯的 JAR 文件啟動...
+    start "Bluff Master Backend" cmd /k "java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar"
+) else (
+    echo [資訊] JAR 文件不存在，嘗試使用 Maven 啟動...
+    start "Bluff Master Backend" cmd /k "mvn spring-boot:run -Dspring-boot.run.profiles=dev"
+)
+cd ..
+
+echo [資訊] 等待後端啟動（10秒）...
+timeout /t 10 /nobreak >nul
 
 echo.
 echo ============================================
@@ -60,6 +66,7 @@ echo.
 
 REM 在背景啟動前端開發伺服器
 start "Bluff Master Frontend" cmd /k "npm run dev"
+cd ..
 
 REM 等待前端啟動
 timeout /t 5 /nobreak >nul
@@ -71,13 +78,10 @@ echo ============================================
 echo.
 echo [資訊] 正在建立 Cloudflare Tunnel...
 echo [資訊] 這將創建一個公開的 URL，讓其他人可以訪問您的本地開發伺服器
+echo [資訊] 前端會自動代理後端 API 和 WebSocket 連接
 echo.
 
-cd ..
-
 REM 啟動 Cloudflare Tunnel（只暴露前端，前端會自動代理後端）
-REM 前端已配置代理，會將 /api 和 /api/ws (WebSocket) 轉發到後端
 cloudflared tunnel --url http://localhost:3000
 
 pause
-

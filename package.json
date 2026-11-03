@@ -1,0 +1,14 @@
+{
+  "name": "bluff-master",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bluff Master 唬爛王 - 根目錄腳本與跨平台環境變數",
+  "scripts": {
+    "dev:frontend": "cross-env NODE_ENV=development npm --prefix frontend run dev",
+    "build:frontend": "cross-env NODE_ENV=production npm --prefix frontend run build",
+    "preview:frontend": "cross-env NODE_ENV=production npm --prefix frontend run preview"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}
