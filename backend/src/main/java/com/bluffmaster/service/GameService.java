@@ -442,13 +442,43 @@ public class GameService {
         Room room = roomRepository.findById(player.getRoomId())
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
 
-        // 如果主講者斷線，自動結束當前回合
+        // 如果主講者斷線：已選假圖則計分結束；尚未選假圖則中止回合，避免 finishRound 丟錯卡死
         if (room.getStatus() == Room.RoomStatus.PLAYING) {
             Optional<GameRound> currentRound = gameRoundRepository.findByRoomIdAndIsFinishedFalse(room.getId());
             if (currentRound.isPresent() && currentRound.get().getSpeakerId().equals(playerId)) {
-                finishRound(currentRound.get().getId(), null);
+                GameRound round = currentRound.get();
+                String fakeImageUrl = round.getFakeImageUrl();
+                if (fakeImageUrl == null || fakeImageUrl.isBlank()) {
+                    abortRoundWithoutScoring(round);
+                } else {
+                    finishRound(round.getId(), null);
+                }
             }
         }
+    }
+
+    /**
+     * 中止尚未選假圖的回合（不計分），並回退房間回合數，讓房主／下一位可重新 startRound。
+     */
+    private void abortRoundWithoutScoring(GameRound round) {
+        autoFinishRoundScheduler.cancel(round.getId());
+
+        if (Boolean.TRUE.equals(round.getIsFinished())) {
+            return;
+        }
+
+        round.setPhase(GameRound.RoundPhase.FINISHED);
+        round.setIsFinished(true);
+        gameRoundRepository.save(round);
+
+        Room room = roomRepository.findById(round.getRoomId()).orElse(null);
+        if (room != null && round.getRoundNumber().equals(room.getCurrentRound())) {
+            room.setCurrentRound(Math.max(0, room.getCurrentRound() - 1));
+            roomRepository.save(room);
+        }
+
+        log.info("主講者斷線且尚未選假圖，已中止回合: roomId={}, roundId={}",
+                round.getRoomId(), round.getId());
     }
 
     @Transactional

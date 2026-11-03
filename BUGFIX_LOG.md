@@ -20,7 +20,7 @@
 | B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
 | B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | ✅ 已修 |
-| B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | 未選假圖時改 abort/cancel |
+| B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | ✅ 已修 |
 | B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | ✅ 已修 |
 | B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | 改 Instant / 帶 `Z` / epoch ms |
 | B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | 提供 claim/reconnect API |
@@ -98,4 +98,11 @@
 - **改哪裡**：新增 `AutoFinishRoundScheduler`；`GameService.revealResult` / `finishRound`；註解 `VotingTimeoutScheduler`
 - **為什麼**：逾時只 reveal，計分需房主手動 finish，房主離線會卡在 REVEALING
 - **怎麼改**：reveal 成功後 4 秒自動 `finishRound(null)` 並廣播；手動 finish 時先 `cancel` 排程；`isFinished` 仍防重複計分
+- **狀態**：已完成
+
+### 2026-11-03 — B9 主講者斷線：無假圖則 abort
+
+- **改哪裡**：`GameService.handlePlayerDisconnect`（新增 `abortRoundWithoutScoring`）
+- **為什麼**：主講者斷線一律 `finishRound`，尚未選假圖時會丟錯導致回合卡死
+- **怎麼改**：假圖為空則中止回合（不計分、回退 `currentRound`）；已有假圖才走原本 `finishRound`
 - **狀態**：已完成
