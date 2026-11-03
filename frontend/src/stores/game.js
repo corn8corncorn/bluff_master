@@ -265,12 +265,7 @@ export const useGameStore = defineStore("game", () => {
 
       const response = await uploadApi.post(
         `/images/players/${currentPlayer.value.id}/upload`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
+        formData
       )
 
       const urls = response.data || []

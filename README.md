@@ -66,7 +66,7 @@ bluff_master/
 CREATE DATABASE bluff_master CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-本機後端預設使用 `dev` profile（`application-dev.yml`）。請依你的 MySQL 帳密調整該檔，或改用環境變數覆寫。
+本機後端預設使用 `dev` profile（`application-dev.yml`）。MySQL 密碼可用環境變數 `DB_PASSWORD` 覆寫（未設定時沿用 yml 預設值），帳號／URL 也可直接改該檔。
 
 ## 啟動方式
 
