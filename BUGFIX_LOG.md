@@ -13,7 +13,7 @@
 | ID | 嚴重度 | 位置 | 問題 | 建議修法（單點） |
 |----|--------|------|------|------------------|
 | B1 | High | `frontend/vite.config.js` | Proxy `/api` 未開 `ws: true` | ✅ 已修 |
-| B2 | High | `backend/start.sh` | 無 JAR 後備；與 bat 不一致 | 有 JAR 則 `java -D... -jar`，否則 `mvn` |
+| B2 | High | `backend/start.sh` | 無 JAR 後備；與 bat 不一致 | ✅ 已修 |
 | B3 | Medium | 啟動 bat 腳本 | JAR 路徑使用 `\` | ✅ 已修 |
 | B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | 根目錄 `start.sh` + 對齊 full 腳本 |
 | B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | 預設 exclude Redis（與 dev 一致） |
@@ -60,4 +60,11 @@
 - **為什麼**：`java -jar -Dspring.profiles.active=dev ...` 會把 `-D` 當成程式參數，dev profile 不載入（錯密碼／誤連 Redis）
 - **怎麼改**：`java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar`
 - **來源**：[Explore bugs](1c241b9b-f3f9-4822-86d4-5942bcbe3372)
+- **狀態**：已完成
+
+### 2026-11-03 — B2 `start.sh` 對齊 `start.bat`
+
+- **改哪裡**：`backend/start.sh`
+- **為什麼**：Linux 腳本先前只走 Maven，無 JAR 時無法啟動，且與 Windows bat 行為不一致
+- **怎麼改**：有 `target/bluff-master-backend-1.0.0.jar` 則 `java -Dspring.profiles.active=dev -jar ...`；否則檢查 Maven 後 `mvn spring-boot:run -Dspring-boot.run.profiles=dev`；路徑用 `/`
 - **狀態**：已完成
