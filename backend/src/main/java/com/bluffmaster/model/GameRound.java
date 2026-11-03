@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -69,7 +70,7 @@ public class GameRound {
     private LocalDateTime finishedAt;
 
     @Column
-    private LocalDateTime votingEndsAt;  // 投票截止時間（伺服器權威）
+    private Instant votingEndsAt;  // 投票截止時間（UTC Instant，伺服器權威）
 
     public enum RoundPhase {
         STORY_TELLING,  // 講故事階段

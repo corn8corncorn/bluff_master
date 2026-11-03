@@ -2,7 +2,7 @@ package com.bluffmaster.service;
 
 import com.bluffmaster.dto.GameRoundDTO;
 import com.bluffmaster.model.GameRound;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -50,7 +50,7 @@ public class GameRoundDtoMapper {
 
     if (round.getPhase() == GameRound.RoundPhase.VOTING && round.getVotingEndsAt() != null) {
       long secondsLeft =
-          ChronoUnit.SECONDS.between(LocalDateTime.now(), round.getVotingEndsAt());
+          ChronoUnit.SECONDS.between(Instant.now(), round.getVotingEndsAt());
       builder.votingTimeLeft((int) Math.max(0, secondsLeft));
     }
 

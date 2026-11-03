@@ -22,7 +22,7 @@
 | B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | ✅ 已修 |
 | B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | ✅ 已修 |
 | B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | ✅ 已修 |
-| B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | 改 Instant / 帶 `Z` / epoch ms |
+| B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | ✅ 已修 |
 | B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | 提供 claim/reconnect API |
 | B13 | Medium | `WebSocketController.selectFakeTheme` | catch 只 log，WS 備援無錯誤回饋 | 錯誤頻道或回傳失敗 |
 
@@ -105,4 +105,11 @@
 - **改哪裡**：`GameService.handlePlayerDisconnect`（新增 `abortRoundWithoutScoring`）
 - **為什麼**：主講者斷線一律 `finishRound`，尚未選假圖時會丟錯導致回合卡死
 - **怎麼改**：假圖為空則中止回合（不計分、回退 `currentRound`）；已有假圖才走原本 `finishRound`
+- **狀態**：已完成
+
+### 2026-11-03 — B11 votingEndsAt 改 Instant（UTC）
+
+- **改哪裡**：`GameRound` / `GameRoundDTO` / `GameRoundRepository` / `GameService` / `GameRoundDtoMapper`；`Game.vue` 倒數解析
+- **為什麼**：`LocalDateTime` 無時區，跨區客戶端解析倒數會錯位
+- **怎麼改**：後端一律 `Instant`（REST/WS 同源 DTO，Jackson 輸出 ISO-8601 含 `Z`）；前端以 `Date`／epoch 對 `Date.now()` 計算剩餘秒數
 - **狀態**：已完成

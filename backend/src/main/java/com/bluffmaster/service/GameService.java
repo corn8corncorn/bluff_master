@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -175,7 +175,7 @@ public class GameService {
         }
 
         round.setPhase(GameRound.RoundPhase.VOTING);
-        round.setVotingEndsAt(LocalDateTime.now().plusSeconds(votingTimeoutSeconds));
+        round.setVotingEndsAt(Instant.now().plusSeconds(votingTimeoutSeconds));
         round = gameRoundRepository.save(round);
 
         // 強制加載懶加載的集合，避免 LazyInitializationException
@@ -598,7 +598,7 @@ public class GameService {
     public List<GameRoundDTO> revealExpiredVotingRounds() {
         List<GameRound> expiredRounds = gameRoundRepository
                 .findByPhaseAndIsFinishedFalseAndVotingEndsAtBefore(
-                        GameRound.RoundPhase.VOTING, LocalDateTime.now());
+                        GameRound.RoundPhase.VOTING, Instant.now());
 
         List<GameRoundDTO> results = new ArrayList<>();
         for (GameRound round : expiredRounds) {
@@ -613,7 +613,7 @@ public class GameService {
 
     private boolean isVotingExpired(GameRound round) {
         return round.getVotingEndsAt() != null
-                && LocalDateTime.now().isAfter(round.getVotingEndsAt());
+                && Instant.now().isAfter(round.getVotingEndsAt());
     }
 
     private Player requirePlayer(String playerId) {
@@ -775,7 +775,7 @@ public class GameService {
                 .votingEndsAt(round.getVotingEndsAt());
 
         if (round.getPhase() == GameRound.RoundPhase.VOTING && round.getVotingEndsAt() != null) {
-            long secondsLeft = ChronoUnit.SECONDS.between(LocalDateTime.now(), round.getVotingEndsAt());
+            long secondsLeft = ChronoUnit.SECONDS.between(Instant.now(), round.getVotingEndsAt());
             builder.votingTimeLeft((int) Math.max(0, secondsLeft));
         }
 

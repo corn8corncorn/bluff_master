@@ -6,7 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import com.bluffmaster.model.GameRound.RoundPhase;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +15,6 @@ public interface GameRoundRepository extends JpaRepository<GameRound, String> {
     List<GameRound> findByRoomId(String roomId);
     Optional<GameRound> findByRoomIdAndIsFinishedFalse(String roomId);
     List<GameRound> findByPhaseAndIsFinishedFalseAndVotingEndsAtBefore(
-            RoundPhase phase, LocalDateTime time);
+            RoundPhase phase, Instant time);
 }
 

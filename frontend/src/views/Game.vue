@@ -1304,10 +1304,19 @@ onUnmounted(() => {
   gameStore.disconnectWebSocket();
 });
 
+/** 將 votingEndsAt（UTC ISO 含 Z，或 epoch millis）轉成毫秒時間戳 */
+function votingEndsAtToMs(endsAt) {
+  if (endsAt == null || endsAt === "") return NaN;
+  if (typeof endsAt === "number") return endsAt;
+  if (typeof endsAt === "string" && /^\d+$/.test(endsAt)) return Number(endsAt);
+  // Instant JSON 為 "...Z"；用 Date 解析為絕對時間，勿當本地無時區字串
+  return new Date(endsAt).getTime();
+}
+
 function syncVotingTimeLeft() {
   const endsAt = currentRound.value?.votingEndsAt;
-  if (endsAt) {
-    const endMs = new Date(endsAt).getTime();
+  if (endsAt != null && endsAt !== "") {
+    const endMs = votingEndsAtToMs(endsAt);
     if (!Number.isNaN(endMs)) {
       votingTimeLeft.value = Math.max(
         0,

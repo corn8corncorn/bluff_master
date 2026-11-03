@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +33,7 @@ public class GameRoundDTO {
     private Map<String, String> votes;
     private Boolean isFinished;
     private Integer votingTimeLeft;  // 剩餘投票時間（秒）
-    private LocalDateTime votingEndsAt;  // 投票截止時間
+    private Instant votingEndsAt;  // 投票截止時間（UTC，JSON 為 ISO-8601 含 Z）
     private Map<String, VoteResult> voteResults;  // 每個玩家的投票結果和得分變化
 }
 
