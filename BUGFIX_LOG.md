@@ -31,7 +31,7 @@
 | ID | 嚴重度 | 位置 | 疑點 | 待驗證 |
 |----|--------|------|------|--------|
 | U1 | Medium | `game.js` upload `Content-Type: multipart/form-data` | 可能缺 boundary；Axios 1.x 多半會覆寫 | 實機上傳是否偶發失敗 |
-| U2 | Low | `joinRoom` 用 nickname 找玩家 | 後端已擋同名時風險低 | 回應是否應帶 playerId |
+| U2 | — | ShortcutManager／全域 keydown | 打字按 Enter 是否誤觸遊戲快捷鍵 | ✅ 非 BUG：專案無 ShortcutManager／無全域 keydown；僅 `Room.vue` 重連暱稱 input 有 `@keyup.enter`（綁在 input 上，屬預期送出） |
 | U3 | Low | `/round` vs `/round-result` | 語意分裂但兩邊都能更新 UI | 是否刻意 |
 | U4 | Low | REST `next-phase` 等不廣播 WS | 目前前端走 WS；純 REST 客戶會不同步 | 是否要統一廣播 |
 | U5 | Low | `application-dev.yml` 硬編碼密碼 | 不利跨機；屬設定/安全 | 改 `${DB_PASSWORD:...}` |
@@ -134,3 +134,9 @@
 - **為什麼**：catch 只 log，前端 WS 備援失敗時無提示，以為選題成功
 - **怎麼改**：失敗廣播 `/topic/errors` 與 `/topic/room/{roomId}/errors`（`success:false` + message）；前端訂閱後 toast「選題失敗請重試」
 - **狀態**：已完成
+
+### 2026-11-03 — U2 ShortcutManager／Enter 誤觸（檢查結論）
+
+- **查哪裡**：全專案搜尋 `ShortcutManager`、`keydown`／`keyup`；檢視 `Game.vue`、`Room.vue`
+- **結論**：非 BUG。無 ShortcutManager、無 window 級快捷鍵監聽；唯一鍵盤處理是 `Room.vue` 重連暱稱欄 `@keyup.enter="handleRejoin"`，事件綁在該 input，不會在其他輸入框誤觸遊戲動作
+- **狀態**：已標註非 BUG（未改程式）
