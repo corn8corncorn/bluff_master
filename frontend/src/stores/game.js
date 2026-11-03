@@ -35,6 +35,17 @@ export const useGameStore = defineStore("game", () => {
     );
   });
 
+  function persistPlayerSeat(roomId, playerId) {
+    if (roomId && playerId && typeof localStorage !== "undefined") {
+      localStorage.setItem(`bluff_master_player_${roomId}`, playerId);
+    }
+  }
+
+  function loadPersistedPlayerId(roomId) {
+    if (!roomId || typeof localStorage === "undefined") return null;
+    return localStorage.getItem(`bluff_master_player_${roomId}`);
+  }
+
   async function createRoom(nickname, gameMode, maxPlayers) {
     const response = await api.post("/rooms", {
       nickname,
@@ -43,6 +54,7 @@ export const useGameStore = defineStore("game", () => {
     });
     room.value = response.data;
     currentPlayer.value = response.data.players.find((p) => p.isHost);
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     // Session 會自動由後端保存，不需要前端處理
     return response.data;
   }
@@ -56,7 +68,28 @@ export const useGameStore = defineStore("game", () => {
     currentPlayer.value = response.data.players.find(
       (p) => p.nickname === nickname
     );
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     // Session 會自動由後端保存，不需要前端處理
+    return response.data;
+  }
+
+  async function reconnectRoom(roomCode, nickname, roomIdHint) {
+    const roomId =
+      roomIdHint ||
+      room.value?.id ||
+      (room.value?.roomCode === roomCode ? room.value.id : null);
+    const persistedPlayerId = loadPersistedPlayerId(roomId);
+    const response = await api.post("/rooms/reconnect", {
+      roomCode,
+      nickname,
+      playerId: persistedPlayerId || undefined,
+    });
+    room.value = response.data;
+    currentPlayer.value =
+      response.data.players.find((p) => p.id === persistedPlayerId) ||
+      response.data.players.find((p) => p.nickname === nickname) ||
+      null;
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     return response.data;
   }
 
@@ -123,6 +156,7 @@ export const useGameStore = defineStore("game", () => {
             foundPlayer.isHost ? "(房主)" : ""
           );
           currentPlayer.value = foundPlayer;
+          persistPlayerSeat(room.value?.id, foundPlayer.id);
         } else {
           // Session 中的玩家 ID 在房間中找不到，清除 currentPlayer
           console.warn(
@@ -763,6 +797,7 @@ export const useGameStore = defineStore("game", () => {
     fakeThemeCategories,
     createRoom,
     joinRoom,
+    reconnectRoom,
     fetchRoom,
     leaveRoom,
     setReady,

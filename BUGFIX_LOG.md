@@ -23,7 +23,7 @@
 | B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | ✅ 已修 |
 | B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | ✅ 已修 |
 | B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | ✅ 已修 |
-| B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | 提供 claim/reconnect API |
+| B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | ✅ 已修 |
 | B13 | Medium | `WebSocketController.selectFakeTheme` | catch 只 log，WS 備援無錯誤回饋 | 錯誤頻道或回傳失敗 |
 
 ### Uncertain（不確定，先不修）
@@ -119,4 +119,11 @@
 - **改哪裡**：`websocket.js`、`stores/game.js`、`Game.vue`、`Room.vue`
 - **為什麼**：`connect()` 失敗回傳 `null`，呼叫端未處理，畫面靜默卡住
 - **怎麼改**：失敗改 `throw new Error('WebSocket connect failed')`；`connectWebSocket` 清掉 connection 並上拋；Room／Game 用 toast「連線失敗，請重整」
+- **狀態**：已完成
+
+### 2026-11-03 — B12 同名重連原座位
+
+- **改哪裡**：`RoomService`、`RoomController`、`ReconnectRoomRequest`、`game.js`、`Room.vue`
+- **為什麼**：重整後 session 遺失，再用同名 join 會被擋，無法坐回原位
+- **怎麼改**：`POST /rooms/reconnect` 以 playerId／暱稱認領座位；join 若 session 仍是該玩家則直接重連；Room 同名失敗時 confirm「是否要重連原座位」
 - **狀態**：已完成

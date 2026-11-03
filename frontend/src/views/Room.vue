@@ -468,22 +468,45 @@ async function handleDeleteImage(imageUrl) {
   }
 }
 
+async function claimSeatAndConnect(nickname) {
+  await gameStore.reconnectRoom(room.value.roomCode, nickname, room.value.id)
+  await gameStore.fetchRoom(room.value.id)
+  await gameStore.connectWebSocket(room.value.id, currentPlayer.value?.id)
+  showSuccess('已重連原座位')
+  rejoinNickname.value = ''
+}
+
 async function handleRejoin() {
   if (!rejoinNickname.value.trim() || !room.value) return
 
+  const nickname = rejoinNickname.value.trim()
   rejoining.value = true
   try {
-    await gameStore.joinRoom(room.value.roomCode, rejoinNickname.value.trim())
-    // 重新獲取房間資訊
+    await gameStore.joinRoom(room.value.roomCode, nickname)
     await gameStore.fetchRoom(room.value.id)
-    // 連接 WebSocket
     await gameStore.connectWebSocket(room.value.id, currentPlayer.value?.id)
     showSuccess('重新加入成功')
     rejoinNickname.value = ''
   } catch (error) {
     console.error('重新加入錯誤:', error)
     const errorMessage = error.response?.data?.message || error.message || '重新加入失敗'
-    showError(errorMessage)
+    if (typeof errorMessage === 'string' && errorMessage.includes('暱稱已被使用')) {
+      const shouldReconnect = window.confirm('該暱稱已在房間中，是否要重連原座位？')
+      if (shouldReconnect) {
+        try {
+          await claimSeatAndConnect(nickname)
+        } catch (reconnectError) {
+          console.error('重連原座位失敗:', reconnectError)
+          showError(
+            reconnectError.response?.data?.message ||
+              reconnectError.message ||
+              '重連失敗'
+          )
+        }
+      }
+    } else {
+      showError(errorMessage)
+    }
   } finally {
     rejoining.value = false
   }

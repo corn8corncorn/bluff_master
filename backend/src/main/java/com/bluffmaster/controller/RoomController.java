@@ -47,10 +47,10 @@ public class RoomController {
 
     @PostMapping("/join")
     public ResponseEntity<RoomDTO> joinRoom(@Valid @RequestBody JoinRoomRequest request, HttpSession session) {
-        RoomDTO room = roomService.joinRoom(request);
+        String existingPlayerId = (String) session.getAttribute(SESSION_PLAYER_ID);
+        RoomDTO room = roomService.joinRoom(request, existingPlayerId);
         
         // 檢查 session 中是否已經有玩家 ID 和房間 ID
-        String existingPlayerId = (String) session.getAttribute(SESSION_PLAYER_ID);
         String existingRoomId = (String) session.getAttribute(SESSION_ROOM_ID);
         
         // 如果 session 中已經有玩家且房間 ID 匹配，檢查該玩家是否仍在房間中
@@ -97,6 +97,31 @@ public class RoomController {
         messagingTemplate.convertAndSend("/topic/room/" + room.getId(), room);
         log.info("廣播房間更新: 房間 {} 有新玩家加入", room.getId());
         
+        return ResponseEntity.ok(room);
+    }
+
+    @PostMapping("/reconnect")
+    public ResponseEntity<RoomDTO> reconnectRoom(
+            @Valid @RequestBody ReconnectRoomRequest request, HttpSession session) {
+        RoomDTO room = roomService.reconnectSeat(request);
+
+        String claimedPlayerId = room.getPlayers().stream()
+                .filter(p -> request.getPlayerId() != null && request.getPlayerId().equals(p.getId()))
+                .map(PlayerDTO::getId)
+                .findFirst()
+                .orElseGet(() -> room.getPlayers().stream()
+                        .filter(p -> p.getNickname().equals(request.getNickname()))
+                        .map(PlayerDTO::getId)
+                        .findFirst()
+                        .orElse(null));
+
+        if (claimedPlayerId != null) {
+            session.setAttribute(SESSION_PLAYER_ID, claimedPlayerId);
+            session.setAttribute(SESSION_ROOM_ID, room.getId());
+            log.info("Reconnect session 已保存: playerId={}, roomId={}", claimedPlayerId, room.getId());
+        }
+
+        messagingTemplate.convertAndSend("/topic/room/" + room.getId(), room);
         return ResponseEntity.ok(room);
     }
 

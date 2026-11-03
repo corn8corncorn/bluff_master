@@ -70,6 +70,11 @@ public class RoomService {
 
     @Transactional
     public RoomDTO joinRoom(JoinRoomRequest request) {
+        return joinRoom(request, null);
+    }
+
+    @Transactional
+    public RoomDTO joinRoom(JoinRoomRequest request, String sessionPlayerId) {
         Room room = roomRepository.findByRoomCode(request.getRoomCode())
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
 
@@ -77,15 +82,24 @@ public class RoomService {
             throw new RuntimeException("遊戲已開始，無法加入");
         }
 
-        if (room.getPlayerIds().size() >= room.getMaxPlayers()) {
-            throw new RuntimeException("房間已滿");
+        // 同名且 session 仍是該玩家 → 視為重連原座位，不報錯
+        Player existingByNickname = playerRepository.findByRoomId(room.getId()).stream()
+                .filter(p -> p.getNickname().equals(request.getNickname()))
+                .findFirst()
+                .orElse(null);
+        if (existingByNickname != null) {
+            if (sessionPlayerId != null && sessionPlayerId.equals(existingByNickname.getId())) {
+                existingByNickname.setIsOnline(true);
+                playerRepository.save(existingByNickname);
+                log.info("joinRoom: session 認領原座位 playerId={}, roomId={}",
+                        existingByNickname.getId(), room.getId());
+                return convertToDTO(room, existingByNickname.getId());
+            }
+            throw new RuntimeException("暱稱已被使用");
         }
 
-        // 檢查暱稱是否重複
-        boolean nicknameExists = playerRepository.findByRoomId(room.getId()).stream()
-                .anyMatch(p -> p.getNickname().equals(request.getNickname()));
-        if (nicknameExists) {
-            throw new RuntimeException("暱稱已被使用");
+        if (room.getPlayerIds().size() >= room.getMaxPlayers()) {
+            throw new RuntimeException("房間已滿");
         }
 
         // 創建玩家
@@ -104,13 +118,38 @@ public class RoomService {
         room.getPlayerIds().add(player.getId());
         room = roomRepository.save(room);
 
-        RoomDTO roomDTO = convertToDTO(room, null);
-        
-        // 通過 WebSocket 廣播房間更新（通知其他玩家有新玩家加入）
-        // 注意：這裡需要注入 SimpMessagingTemplate，但為了避免循環依賴，
-        // 我們在 Controller 層處理 WebSocket 廣播
-        
-        return roomDTO;
+        return convertToDTO(room, null);
+    }
+
+    /**
+     * 以 playerId（優先）或暱稱認領房間內既有座位，用於重整後 session 遺失的重連。
+     */
+    @Transactional
+    public RoomDTO reconnectSeat(ReconnectRoomRequest request) {
+        Room room = roomRepository.findByRoomCode(request.getRoomCode())
+                .orElseThrow(() -> new RuntimeException("房間不存在"));
+
+        Player player = null;
+        String requestedPlayerId = request.getPlayerId();
+        if (requestedPlayerId != null && !requestedPlayerId.isBlank()) {
+            player = playerRepository.findById(requestedPlayerId).orElse(null);
+            if (player != null && !room.getId().equals(player.getRoomId())) {
+                player = null;
+            }
+        }
+
+        if (player == null) {
+            player = playerRepository.findByRoomId(room.getId()).stream()
+                    .filter(p -> p.getNickname().equals(request.getNickname()))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("找不到該暱稱的座位，無法重連"));
+        }
+
+        player.setIsOnline(true);
+        playerRepository.save(player);
+        log.info("reconnectSeat: 已認領座位 playerId={}, nickname={}, roomId={}",
+                player.getId(), player.getNickname(), room.getId());
+        return convertToDTO(room, player.getId());
     }
 
     @Transactional
