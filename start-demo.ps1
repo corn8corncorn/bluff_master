@@ -36,10 +36,10 @@ Set-Location backend
 $jarPath = "target/bluff-master-backend-1.0.0.jar"
 if (Test-Path $jarPath) {
     Write-Host "[資訊] 使用已編譯的 JAR 文件啟動..." -ForegroundColor Green
-    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar" -PassThru
+    $backendProcess = Start-Process powershell -ArgumentList '-NoExit', '-Command', 'java "-Dspring.profiles.active=dev" -jar target/bluff-master-backend-1.0.0.jar' -PassThru
 } else {
     Write-Host "[資訊] JAR 文件不存在，嘗試使用 Maven 啟動..." -ForegroundColor Yellow
-    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "mvn spring-boot:run -Dspring-boot.run.profiles=dev" -PassThru
+    $backendProcess = Start-Process powershell -ArgumentList '-NoExit', '-Command', 'mvn spring-boot:run "-Dspring-boot.run.profiles=dev"' -PassThru
 }
 Set-Location ..
 

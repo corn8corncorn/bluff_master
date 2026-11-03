@@ -66,7 +66,7 @@ bluff_master/
 CREATE DATABASE bluff_master CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-本機後端預設使用 `dev` profile（`application-dev.yml`）。MySQL 密碼可用環境變數 `DB_PASSWORD` 覆寫（未設定時沿用 yml 預設值），帳號／URL 也可直接改該檔。
+本機後端預設使用 `dev` profile（`application-dev.yml`）。MySQL 帳密可用環境變數 `DB_USERNAME`／`DB_PASSWORD` 覆寫（未設定時預設皆為 `root`）。
 
 ## 啟動方式
 
@@ -160,6 +160,23 @@ Session 遺失時，同名 `join` 會被擋。房間頁可選擇**重連原座�
 | [如何分享給其他人.md](如何分享給其他人.md) | 把 Tunnel 網址分給朋友 |
 | [BUGFIX_LOG.md](BUGFIX_LOG.md) | Bug 修復與審查紀錄 |
 | [START.md](START.md) | 較完整的啟動／故障排除 |
+
+## 測試沙盒 (Docker)
+
+本機不想裝 MySQL 時，可用 Docker 起資料庫再測前後端：
+
+```bash
+docker-compose up -d
+```
+
+會啟動 `mysql:8.0`（埠 `3306`），資料庫 `bluff_master`，帳密 `root`／`root`，資料持久化在 volume `bluff_master_mysql_data`。
+
+一鍵（起 MySQL → 等 10 秒 → 後端 JAR／Maven → 前端）：
+
+- Windows：`test-sandbox.bat`
+- Linux／macOS：`chmod +x test-sandbox.sh && ./test-sandbox.sh`
+
+測完可開：**http://localhost:3000**（後端 `http://localhost:8080/api`）。停止沙盒腳本不會刪 MySQL 容器；要停庫可執行 `docker-compose down`。
 
 ## 授權
 
