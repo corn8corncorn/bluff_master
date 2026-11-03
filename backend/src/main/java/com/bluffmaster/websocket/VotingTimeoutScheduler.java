@@ -18,6 +18,11 @@ public class VotingTimeoutScheduler {
     private final GameService gameService;
     private final SimpMessagingTemplate messagingTemplate;
 
+    /**
+     * 投票逾時自動 reveal。
+     * reveal 後由 {@link com.bluffmaster.service.AutoFinishRoundScheduler}
+     * 延遲自動 finishRound 完成計分（不依賴房主在線）。
+     */
     @Scheduled(fixedRate = 1000)
     public void autoRevealExpiredVotingRounds() {
         List<GameRoundDTO> revealed = gameService.revealExpiredVotingRounds();

@@ -21,7 +21,7 @@
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
 | B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | ✅ 已修 |
 | B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | 未選假圖時改 abort/cancel |
-| B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | 伺服器 reveal 後自動 finish |
+| B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | ✅ 已修 |
 | B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | 改 Instant / 帶 `Z` / epoch ms |
 | B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | 提供 claim/reconnect API |
 | B13 | Medium | `WebSocketController.selectFakeTheme` | catch 只 log，WS 備援無錯誤回饋 | 錯誤頻道或回傳失敗 |
@@ -91,4 +91,11 @@
 - **改哪裡**：`GameService.startRound`
 - **為什麼**：前端由當前回合主講者開下一輪，後端卻 `requireHost`，非房主主講者會失敗卡關
 - **怎麼改**：有最近一輪時改呼叫既有 `requireSpeakerOrHost`；尚無回合（第一輪）仍僅房主
+- **狀態**：已完成
+
+### 2026-11-03 — B10 reveal 後自動 finishRound
+
+- **改哪裡**：新增 `AutoFinishRoundScheduler`；`GameService.revealResult` / `finishRound`；註解 `VotingTimeoutScheduler`
+- **為什麼**：逾時只 reveal，計分需房主手動 finish，房主離線會卡在 REVEALING
+- **怎麼改**：reveal 成功後 4 秒自動 `finishRound(null)` 並廣播；手動 finish 時先 `cancel` 排程；`isFinished` 仍防重複計分
 - **狀態**：已完成

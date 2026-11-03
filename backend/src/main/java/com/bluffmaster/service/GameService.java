@@ -36,6 +36,7 @@ public class GameService {
     private final ImageService imageService;
     private final FakeImageService fakeImageService;
     private final GameRoundMutationService gameRoundMutationService;
+    private final AutoFinishRoundScheduler autoFinishRoundScheduler;
 
     @Value("${game.voting-timeout:10}")
     private int votingTimeoutSeconds;
@@ -306,11 +307,16 @@ public class GameService {
 
         GameRoundDTO dto = convertToDTO(round, speaker.getNickname());
         dto.setVoteResults(voteResults);
+        // 逾時／手動 reveal 後皆排程自動計分，避免房主離線卡在 REVEALING
+        autoFinishRoundScheduler.scheduleAfterReveal(round.getId(), round.getRoomId());
         return dto;
     }
 
     @Transactional
     public GameRoundDTO finishRound(String roundId, String actorPlayerId) {
+        // 房主若提前手動 finish，取消自動任務以避免重複計分
+        autoFinishRoundScheduler.cancel(roundId);
+
         GameRound round = gameRoundRepository.findById(roundId)
                 .orElseThrow(() -> new RuntimeException("回合不存在"));
 
