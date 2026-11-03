@@ -19,7 +19,7 @@
 | B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | ✅ 已修 |
 | B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
-| B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | 允許 speaker 或 host，或 UI 只給房主 |
+| B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | ✅ 已修 |
 | B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | 未選假圖時改 abort/cancel |
 | B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | 伺服器 reveal 後自動 finish |
 | B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | 改 Instant / 帶 `Z` / epoch ms |
@@ -84,4 +84,11 @@
 - **改哪裡**：`backend/src/main/resources/application.yml`
 - **為什麼**：預設會啟用 Redis 自動設定，但程式未使用 Redis，未安裝 Redis 時啟動易失敗
 - **怎麼改**：參考 `application-dev.yml`，加上 `spring.autoconfigure.exclude` 排除 `RedisAutoConfiguration` 與 `RedisRepositoriesAutoConfiguration`；dev／default 皆不需 Redis
+- **狀態**：已完成
+
+### 2026-11-03 — B8 startRound 允許主講者或房主
+
+- **改哪裡**：`GameService.startRound`
+- **為什麼**：前端由當前回合主講者開下一輪，後端卻 `requireHost`，非房主主講者會失敗卡關
+- **怎麼改**：有最近一輪時改呼叫既有 `requireSpeakerOrHost`；尚無回合（第一輪）仍僅房主
 - **狀態**：已完成

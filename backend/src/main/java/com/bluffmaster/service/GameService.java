@@ -42,7 +42,14 @@ public class GameService {
 
     @Transactional
     public GameRoundDTO startRound(String roomId, String actorPlayerId) {
-        requireHost(roomId, actorPlayerId);
+        // 第一輪僅房主；之後允許「當前回合主講者」或房主開下一輪（對齊 Game.vue）
+        Optional<GameRound> latestRound = gameRoundRepository.findByRoomId(roomId).stream()
+                .max(Comparator.comparingInt(GameRound::getRoundNumber));
+        if (latestRound.isPresent()) {
+            requireSpeakerOrHost(latestRound.get(), actorPlayerId);
+        } else {
+            requireHost(roomId, actorPlayerId);
+        }
 
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
