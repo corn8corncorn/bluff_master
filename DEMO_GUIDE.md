@@ -69,4 +69,4 @@
 | 8080／3000 被佔用 | 關掉佔用行程後重跑一鍵腳本 |
 | WebSocket 連線失敗 | 重整頁面；確認 Tunnel 與本機後端都活著 |
 
-更完整說明：[README.md](README.md)、[QUICK_START.md](QUICK_START.md)、[如何分享給其他人.md](如何分享給其他人.md)。
+更完整說明：[README.md](README.md)、[QUICK_START.md](QUICK_START.md)、[啟動說明.md](啟動說明.md)、[如何分享給其他人.md](如何分享給其他人.md)。
