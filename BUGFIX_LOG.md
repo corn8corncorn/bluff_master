@@ -33,7 +33,7 @@
 | U1 | Medium | `game.js` upload `Content-Type: multipart/form-data` | 可能缺 boundary；Axios 1.x 多半會覆寫 | 實機上傳是否偶發失敗 |
 | U2 | — | ShortcutManager／全域 keydown | 打字按 Enter 是否誤觸遊戲快捷鍵 | ✅ 非 BUG：專案無 ShortcutManager／無全域 keydown；僅 `Room.vue` 重連暱稱 input 有 `@keyup.enter`（綁在 input 上，屬預期送出） |
 | U3 | Low | `/round` vs `/round-result` | 語意分裂但兩邊都能更新 UI | 是否刻意 |
-| U4 | Low | REST `next-phase` 等不廣播 WS | 目前前端走 WS；純 REST 客戶會不同步 | 是否要統一廣播 |
+| U4 | Medium | 棄用／不存在主題仍可送 `selectFakeTheme` | 無 ImageGrid；UI 在 Game.vue；`FOREIGN` 已從選項排除但仍可 API 送入 | ✅ 已修：後端拒絕不可選／無效主題；前端送出前對照允許列表 |
 | U5 | Low | `application-dev.yml` 硬編碼密碼 | 不利跨機；屬設定/安全 | 改 `${DB_PASSWORD:...}` |
 
 ---
@@ -140,3 +140,10 @@
 - **查哪裡**：全專案搜尋 `ShortcutManager`、`keydown`／`keyup`；檢視 `Game.vue`、`Room.vue`
 - **結論**：非 BUG。無 ShortcutManager、無 window 級快捷鍵監聽；唯一鍵盤處理是 `Room.vue` 重連暱稱欄 `@keyup.enter="handleRejoin"`，事件綁在該 input，不會在其他輸入框誤觸遊戲動作
 - **狀態**：已標註非 BUG（未改程式）
+
+### 2026-11-03 — U4 棄用／無效主題防護
+
+- **查哪裡**：無 `ImageGrid.vue`；主題 UI 在 `Game.vue`；`FakeImageService.getThemeOptions` 已過濾 `FOREIGN`；`selectFakeTheme` 仍接受 `FOREIGN`
+- **結論**：是缺口（尤其 API／舊客戶端可送棄用 `FOREIGN`）
+- **怎麼改**：`FakeImageRegion.isSelectable()`；`selectFakeTheme` 拒絕空白／不存在／不可選主題；前端 `selectFakeTheme` 對照允許列表，失敗 toast／`fakeThemeError`
+- **狀態**：已完成

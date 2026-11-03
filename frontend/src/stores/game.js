@@ -736,6 +736,14 @@ export const useGameStore = defineStore("game", () => {
       throw new Error("玩家資訊未載入");
     }
 
+    const regionAllowed = fakeThemeRegions.value.some((r) => r.id === region);
+    const categoryAllowed = fakeThemeCategories.value.some((c) => c.id === category);
+    if (!regionAllowed || !categoryAllowed) {
+      const err = new Error("此主題已棄用或不存在，請重新選擇");
+      showError(err.message);
+      throw err;
+    }
+
     try {
       const response = await api.post(
         `/game/rounds/${currentRound.value.id}/select-fake-theme`,

@@ -538,13 +538,21 @@ public class GameService {
             throw new RuntimeException("假圖主題已選擇");
         }
 
+        if (regionId == null || regionId.isBlank() || categoryId == null || categoryId.isBlank()) {
+            throw new RuntimeException("無效的主題選項，請重新選擇");
+        }
+
         FakeImageRegion region;
         FakeImageCategory category;
         try {
-            region = FakeImageRegion.valueOf(regionId);
-            category = FakeImageCategory.valueOf(categoryId);
+            region = FakeImageRegion.valueOf(regionId.trim());
+            category = FakeImageCategory.valueOf(categoryId.trim());
         } catch (IllegalArgumentException e) {
-            throw new RuntimeException("無效的主題選項");
+            throw new RuntimeException("主題不存在或已棄用，請重新選擇");
+        }
+
+        if (!region.isSelectable()) {
+            throw new RuntimeException("此主題已棄用，請重新選擇");
         }
 
         // 網路抓圖在交易外執行，避免長時間佔用 DB 連線導致逾時

@@ -27,12 +27,17 @@ public enum FakeImageRegion {
     AUSTRALIA("澳洲"),
     NEW_ZEALAND("紐西蘭"),
     OTHER("其他地區"),
-    /** 舊版相容，與 OTHER 共用圖庫 */
+    /** 舊版相容，與 OTHER 共用圖庫；不可再由前端選取 */
     FOREIGN("其他國外");
 
     private final String label;
 
     FakeImageRegion(String label) {
         this.label = label;
+    }
+
+    /** 是否允許玩家新選此地區（FOREIGN 僅保留舊資料相容） */
+    public boolean isSelectable() {
+        return this != FOREIGN;
     }
 }
