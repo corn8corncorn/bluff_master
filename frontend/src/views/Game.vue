@@ -832,11 +832,13 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useGameStore } from "../stores/game";
+import { useNotification } from "../composables/useNotification";
 import { getRegionLabel } from "../constants/fakeImageThemes";
 
 const route = useRoute();
 const router = useRouter();
 const gameStore = useGameStore();
+const { error: showError } = useNotification();
 
 const fakeThemeRegions = computed(() => gameStore.fakeThemeRegions);
 const fakeThemeCategories = computed(() => gameStore.fakeThemeCategories);
@@ -1040,7 +1042,12 @@ onMounted(async () => {
   ]);
 
   // 連接 WebSocket（若從房間頁過來可能已連線）
-  await gameStore.connectWebSocket(roomId, gameStore.currentPlayer?.id);
+  try {
+    await gameStore.connectWebSocket(roomId, gameStore.currentPlayer?.id);
+  } catch (error) {
+    console.error("Game: WebSocket 連線失敗", error);
+    showError("連線失敗，請重整");
+  }
 
   // 嘗試獲取當前的回合（如果存在）
   await gameStore.fetchCurrentRound(roomId);

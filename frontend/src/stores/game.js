@@ -301,7 +301,9 @@ export const useGameStore = defineStore("game", () => {
       return connection.value;
     }
 
-    connection.value = await websocket.connect(roomId, playerId, {
+    let client;
+    try {
+      client = await websocket.connect(roomId, playerId, {
       onRoomUpdate: (updatedRoom) => {
         // 保存之前的玩家列表（用於檢測新玩家）
         const previousPlayerIds = room.value?.players?.map((p) => p.id) || [];
@@ -492,8 +494,14 @@ export const useGameStore = defineStore("game", () => {
         };
         triggerRef(room);
       },
-    });
+      });
+    } catch (error) {
+      connection.value = null;
+      console.error("connectWebSocket: 連線失敗", error);
+      throw error;
+    }
 
+    connection.value = client;
     await markPlayerOnline(playerId);
     await fetchRoom(roomId);
     return connection.value;

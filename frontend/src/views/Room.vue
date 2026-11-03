@@ -305,7 +305,12 @@ onMounted(async () => {
 
   // 如果找不到玩家，不連接 WebSocket
   if (currentPlayer.value) {
-    await gameStore.connectWebSocket(roomId, currentPlayer.value.id)
+    try {
+      await gameStore.connectWebSocket(roomId, currentPlayer.value.id)
+    } catch (error) {
+      console.error('Room: WebSocket 連線失敗', error)
+      showError('連線失敗，請重整')
+    }
   }
 })
 

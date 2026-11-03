@@ -17,7 +17,7 @@
 | B3 | Medium | 啟動 bat 腳本 | JAR 路徑使用 `\` | ✅ 已修 |
 | B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | ✅ 已修 |
 | B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | ✅ 已修 |
-| B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
+| B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | ✅ 已修 |
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
 | B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | ✅ 已修 |
 | B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | ✅ 已修 |
@@ -112,4 +112,11 @@
 - **改哪裡**：`GameRound` / `GameRoundDTO` / `GameRoundRepository` / `GameService` / `GameRoundDtoMapper`；`Game.vue` 倒數解析
 - **為什麼**：`LocalDateTime` 無時區，跨區客戶端解析倒數會錯位
 - **怎麼改**：後端一律 `Instant`（REST/WS 同源 DTO，Jackson 輸出 ISO-8601 含 `Z`）；前端以 `Date`／epoch 對 `Date.now()` 計算剩餘秒數
+- **狀態**：已完成
+
+### 2026-11-03 — B6 WebSocket connect 失敗改為 throw + 提示
+
+- **改哪裡**：`websocket.js`、`stores/game.js`、`Game.vue`、`Room.vue`
+- **為什麼**：`connect()` 失敗回傳 `null`，呼叫端未處理，畫面靜默卡住
+- **怎麼改**：失敗改 `throw new Error('WebSocket connect failed')`；`connectWebSocket` 清掉 connection 並上拋；Room／Game 用 toast「連線失敗，請重整」
 - **狀態**：已完成

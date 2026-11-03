@@ -82,13 +82,13 @@ async function connect(roomId, playerId, callbacks) {
         },
         (error) => {
           console.error("WebSocket 連接失敗:", error);
-          reject(error);
+          reject(new Error("WebSocket connect failed", { cause: error }));
         }
       );
     });
   } catch (error) {
     console.error("WebSocket 初始化失敗:", error);
-    return null;
+    throw new Error("WebSocket connect failed", { cause: error });
   }
 }
 
