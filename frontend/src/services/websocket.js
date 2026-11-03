@@ -77,6 +77,26 @@ async function connect(roomId, playerId, callbacks) {
             }
           );
 
+          // 訂閱錯誤頻道（選假圖等失敗回饋）
+          stompClient.subscribe("/topic/errors", (message) => {
+            try {
+              const errorPayload = JSON.parse(message.body);
+              if (
+                errorPayload?.roomId &&
+                String(errorPayload.roomId) !== String(roomId)
+              ) {
+                return;
+              }
+              callbacks.onError?.(errorPayload);
+            } catch (error) {
+              console.error("解析錯誤訊息失敗:", error, message.body);
+              callbacks.onError?.({
+                success: false,
+                message: "選題失敗請重試",
+              });
+            }
+          });
+
           // 連接成功後 resolve
           resolve(stompClient);
         },

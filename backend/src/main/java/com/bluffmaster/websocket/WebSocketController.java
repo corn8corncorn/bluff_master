@@ -11,6 +11,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Controller
@@ -90,16 +91,37 @@ public class WebSocketController {
 
     @MessageMapping("/game/select-fake-theme")
     public void selectFakeTheme(@Payload Map<String, String> payload) {
+        String roundId = payload != null ? payload.get("roundId") : null;
+        String playerId = payload != null ? payload.get("playerId") : null;
+        String roomId = payload != null ? payload.get("roomId") : null;
         try {
-            String roundId = payload.get("roundId");
-            String playerId = payload.get("playerId");
             String region = payload.get("region");
             String category = payload.get("category");
             GameRoundDTO round = gameService.selectFakeTheme(roundId, region, category, playerId);
-            String roomId = round.getRoomId();
+            roomId = round.getRoomId();
             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/round", round);
         } catch (Exception e) {
             log.error("select-fake-theme 失敗: {}", payload, e);
+            if (roomId == null || roomId.isBlank()) {
+                roomId = gameService.findRoomIdByRoundId(roundId);
+            }
+            Map<String, Object> errorPayload = new HashMap<>();
+            errorPayload.put("success", false);
+            errorPayload.put("action", "select-fake-theme");
+            errorPayload.put(
+                    "message",
+                    e.getMessage() != null && !e.getMessage().isBlank()
+                            ? e.getMessage()
+                            : "選題失敗請重試");
+            errorPayload.put("playerId", playerId != null ? playerId : "");
+            errorPayload.put("roundId", roundId != null ? roundId : "");
+            errorPayload.put("roomId", roomId != null ? roomId : "");
+            messagingTemplate.convertAndSend("/topic/errors", errorPayload);
+            if (roomId != null && !roomId.isBlank()) {
+                // 房間頻道備援，前端只會依 roomId 處理一次
+                messagingTemplate.convertAndSend(
+                        "/topic/room/" + roomId + "/errors", errorPayload);
+            }
         }
     }
 

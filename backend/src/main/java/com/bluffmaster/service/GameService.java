@@ -120,6 +120,15 @@ public class GameService {
         return null;
     }
 
+    public String findRoomIdByRoundId(String roundId) {
+        if (roundId == null || roundId.isBlank()) {
+            return null;
+        }
+        return gameRoundRepository.findById(roundId)
+                .map(GameRound::getRoomId)
+                .orElse(null);
+    }
+
     @Transactional
     public void vote(String playerId, String imageUrl, String roundId) {
         GameRound round = gameRoundRepository.findById(roundId)

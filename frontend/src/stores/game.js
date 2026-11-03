@@ -2,12 +2,14 @@ import { defineStore } from "pinia";
 import { ref, computed, triggerRef } from "vue";
 import api, { uploadApi } from "../services/api";
 import websocket from "../services/websocket";
+import { useNotification } from "../composables/useNotification";
 import {
   FAKE_IMAGE_REGIONS,
   FAKE_IMAGE_CATEGORIES,
 } from "../constants/fakeImageThemes";
 
 export const useGameStore = defineStore("game", () => {
+  const { error: showError } = useNotification();
   const room = ref(null);
   const currentPlayer = ref(null);
   const currentRound = ref(null);
@@ -528,6 +530,22 @@ export const useGameStore = defineStore("game", () => {
         };
         triggerRef(room);
       },
+      onError: (errorPayload) => {
+        const action = errorPayload?.action;
+        const forMe =
+          !errorPayload?.playerId ||
+          !currentPlayer.value?.id ||
+          String(errorPayload.playerId) === String(currentPlayer.value.id);
+        if (!forMe) return;
+
+        const message =
+          errorPayload?.message ||
+          (action === "select-fake-theme"
+            ? "選題失敗請重試"
+            : "操作失敗，請重試");
+        console.error("WebSocket 錯誤:", errorPayload);
+        showError(message);
+      },
       });
     } catch (error) {
       connection.value = null;
@@ -739,6 +757,7 @@ export const useGameStore = defineStore("game", () => {
         websocket.sendSelectFakeTheme(connection.value, {
           roundId: currentRound.value.id,
           playerId: currentPlayer.value.id,
+          roomId: room.value?.id || currentRound.value.roomId,
           region,
           category,
         });
