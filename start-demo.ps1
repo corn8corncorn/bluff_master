@@ -1,5 +1,5 @@
 # 啟動本地開發伺服器與 Cloudflare Tunnel
-# PowerShell 版本
+# PowerShell 版本 — 對齊 start-demo.bat：自動起後端（JAR 優先否則 Maven）+ 前端 + Tunnel
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  啟動本地開發伺服器與 Cloudflare Tunnel" -ForegroundColor Cyan
@@ -31,10 +31,20 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  步驟 1: 啟動後端服務 (端口 8080)" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "請確保後端服務已在 http://localhost:8080 運行"
-Write-Host "(若未啟動，請在另一個終端執行: cd backend; mvn spring-boot:run)"
-Write-Host ""
-Read-Host "確認後端已啟動，按 Enter 繼續"
+
+Set-Location backend
+$jarPath = "target/bluff-master-backend-1.0.0.jar"
+if (Test-Path $jarPath) {
+    Write-Host "[資訊] 使用已編譯的 JAR 文件啟動..." -ForegroundColor Green
+    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar" -PassThru
+} else {
+    Write-Host "[資訊] JAR 文件不存在，嘗試使用 Maven 啟動..." -ForegroundColor Yellow
+    $backendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "mvn spring-boot:run -Dspring-boot.run.profiles=dev" -PassThru
+}
+Set-Location ..
+
+Write-Host "[資訊] 等待後端啟動（10秒）..." -ForegroundColor Yellow
+Start-Sleep -Seconds 10
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
@@ -57,6 +67,7 @@ Write-Host ""
 
 # 在背景啟動前端開發伺服器
 $frontendProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "npm run dev" -PassThru
+Set-Location ..
 
 # 等待前端啟動
 Start-Sleep -Seconds 5
@@ -68,14 +79,12 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "[資訊] 正在建立 Cloudflare Tunnel..." -ForegroundColor Green
 Write-Host "[資訊] 這將創建一個公開的 URL，讓其他人可以訪問您的本地開發伺服器" -ForegroundColor Green
+Write-Host "[資訊] 前端會自動代理後端 API 和 WebSocket 連接" -ForegroundColor Green
 Write-Host ""
 
-Set-Location ..
-
-# 啟動 Cloudflare Tunnel，暴露前端端口
-# 前端會代理後端 API 請求
+# 啟動 Cloudflare Tunnel（只暴露前端，前端會自動代理後端）
 cloudflared tunnel --url http://localhost:3000
 
-# 清理：當 Cloudflare Tunnel 停止時，也停止前端服務
+# 清理：當 Cloudflare Tunnel 停止時，也停止前端／後端視窗
 Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue
-
+Stop-Process -Id $backendProcess.Id -Force -ErrorAction SilentlyContinue

@@ -1,4 +1,10 @@
 #!/bin/bash
+# Bluff Master 前端啟動腳本
+#
+# 執行權限（首次）：
+#   chmod +x frontend/start.sh
+#   ./frontend/start.sh
+# 或於 frontend 目錄內：chmod +x start.sh && ./start.sh
 
 echo "========================================"
 echo "  Bluff Master 前端服務啟動腳本"
