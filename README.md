@@ -1,270 +1,183 @@
 # Bluff Master 唬爛王
 
-一款多人即時派對遊戲，適合在露營、民宿、聚會時遊玩。
+多人即時派對遊戲：輪流當主講者，從真圖混入一張假圖，其他人投票找出唬爛圖。適合露營、民宿、聚會同樂。
 
-## 專案架構
+## 架構
+
+| 層級 | 技術 |
+|------|------|
+| 後端 | Spring Boot 3.2（Java 17+）、REST API、WebSocket（STOMP + SockJS） |
+| 前端 | Vue 3、Vite、Pinia、Vue Router、Tailwind CSS、Axios |
+| 資料 | MySQL 8（本機開發常用 `dev` profile） |
+| 即時 | 房間狀態、回合、投票、結果皆經 WebSocket 推送；Vite 將 `/api`（含 WS）代理到後端 |
+
+**預設不需要 Redis**（程式未使用；`application.yml` 已排除 Redis auto-config，B5 已修）。
+
+## 目錄結構
 
 ```
 bluff_master/
-├── backend/          # Spring Boot 後端
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/bluffmaster/
-│   │   │   │   ├── config/        # 配置類
-│   │   │   │   ├── controller/    # REST API 控制器
-│   │   │   │   ├── dto/           # 資料傳輸物件
-│   │   │   │   ├── model/         # 實體模型
-│   │   │   │   ├── repository/    # 資料存取層
-│   │   │   │   ├── service/       # 業務邏輯層
-│   │   │   │   └── websocket/     # WebSocket 處理
-│   │   │   └── resources/
-│   │   │       └── application.yml
-│   │   └── test/
+├── backend/                 # Spring Boot
+│   ├── src/main/java/com/bluffmaster/
+│   │   ├── config/
+│   │   ├── controller/
+│   │   ├── dto/
+│   │   ├── model/
+│   │   ├── repository/
+│   │   ├── service/
+│   │   └── websocket/
+│   ├── src/main/resources/
+│   │   ├── application.yml
+│   │   └── application-dev.yml
+│   ├── start.bat / start.sh # 後端單獨啟動（JAR 優先，否則 Maven）
 │   └── pom.xml
-├── frontend/         # Vue 3 前端
+├── frontend/                # Vue 3 + Vite
 │   ├── src/
-│   │   ├── views/    # 頁面組件
-│   │   ├── stores/   # Pinia 狀態管理
-│   │   ├── services/ # API 與 WebSocket 服務
-│   │   ├── router/   # 路由配置
-│   │   └── main.js
-│   ├── package.json
+│   │   ├── views/
+│   │   ├── stores/
+│   │   ├── services/
+│   │   └── router/
+│   ├── package.json         # 以 cross-env 設定 NODE_ENV
 │   └── vite.config.js
+├── start-demo.bat           # Windows 一鍵：後端 + 前端 + Cloudflare Tunnel
+├── start-demo-full.bat      # Windows 完整 DEMO（同邏輯）
+├── start.sh                 # Linux／macOS 一鍵（對齊 full）
+├── package.json             # 根目錄腳本 + cross-env
+├── BUGFIX_LOG.md
+├── QUICK_START.md
+├── DEMO_GUIDE.md
 └── README.md
 ```
 
-## 技術棧
-
-### 後端
-- **Spring Boot 3.2.0** - Java 後端框架
-- **WebSocket (STOMP)** - 即時通訊
-- **MySQL** - 資料庫
-- **Redis** - 快取與會話管理
-- **GCP Storage** - 圖片儲存
-- **Thumbnailator** - 圖片壓縮
-
-### 前端
-- **Vue 3** - 前端框架
-- **Pinia** - 狀態管理
-- **Vue Router** - 路由管理
-- **Tailwind CSS** - 樣式框架
-- **SockJS + STOMP** - WebSocket 客戶端
-- **Axios** - HTTP 客戶端
-- **Vite** - 建置工具
-
 ## 環境需求
 
-- Java 17+
-- Node.js 18+
-- MySQL 8.0+
-- Redis 6.0+
-- Maven 3.6+
+- **Java 17+**
+- **Node.js 18+**
+- **MySQL 8.0+**（需先建立資料庫）
+- Maven 3.6+（若尚未編譯 JAR；有 JAR 時可略過）
+- Cloudflare Tunnel（`cloudflared`，僅一鍵 DEMO／對外分享時需要）
+- **不需要 Redis**
 
-## 安裝與執行
+前端與根目錄 npm scripts 已用 **cross-env** 處理 `NODE_ENV`（跨 Windows／Linux）。
 
-### 後端設定
+建立資料庫：
 
-1. 建立 MySQL 資料庫：
 ```sql
 CREATE DATABASE bluff_master CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-2. 設定環境變數（或修改 `application.yml`）：
-```bash
-export DB_USERNAME=root
-export DB_PASSWORD=your_password
-export REDIS_HOST=localhost
-export REDIS_PORT=6379
-export GCP_BUCKET_NAME=bluff-master-images
-export GCP_PROJECT_ID=your-project-id
-export GCP_CREDENTIALS_PATH=/path/to/credentials.json
+本機後端預設使用 `dev` profile（`application-dev.yml`）。MySQL 帳密可用環境變數 `DB_USERNAME`／`DB_PASSWORD` 覆寫（未設定時預設皆為 `root`）。
+
+## 啟動方式
+
+預設埠：**前端** `http://localhost:3000`，**後端** `http://localhost:8080`（context-path：`/api`）。
+
+### 1. Windows 一鍵（後端 + 前端 + Tunnel）
+
+雙擊或在專案根目錄執行：
+
+```bat
+start-demo.bat
 ```
 
-3. 編譯與執行：
+會自動：
+
+1. 啟動後端（優先 `backend/target/bluff-master-backend-1.0.0.jar`，否則 `mvn spring-boot:run`，並帶 `dev` profile）
+2. 啟動前端 `npm run dev`
+3. 啟動 Cloudflare Tunnel 暴露前端（分享產生的 `https://….trycloudflare.com`）
+
+需已安裝 `cloudflared`、Node.js、Java（以及 JAR 不存在時的 Maven）。
+
+### 2. Linux／macOS 一鍵
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+行為對齊 Windows 完整 DEMO：後端（JAR 或 Maven）+ 前端 + Cloudflare Tunnel。路徑一律使用 `/`。
+
+### 3. 手動分開啟動
+
+**視窗 A — 後端：**
+
 ```bash
 cd backend
-mvn clean install
-mvn spring-boot:run
+# 建議：有 JAR 時
+java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar
+# 或：
+# ./start.sh          # Linux（JAR 優先）
+# start.bat           # Windows
+# mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-後端服務將在 `http://localhost:8080` 啟動。
+**視窗 B — 前端：**
 
-### 前端設定
-
-1. 安裝依賴：
 ```bash
 cd frontend
 npm install
-```
-
-2. 啟動開發伺服器：
-```bash
 npm run dev
 ```
 
-前端應用將在 `http://localhost:3000` 啟動。
+或在根目錄：`npm run dev:frontend`（經 cross-env 設 `NODE_ENV=development`）。
 
-## 功能說明
+## 常見問題
 
-### 核心功能
+### 連接埠被佔用（3000 / 8080）
 
-1. **房間管理**
-   - 創建房間（設定人數與遊戲模式）
-   - 加入房間（使用 6 位房間代碼）
-   - 房主可踢人
-   - 遊戲開始後禁止加入
+結束佔用該埠的行程，或暫時改 `frontend/vite.config.js` 的 `server.port`、後端 `server.port`。一鍵腳本預設仍指向 3000／8080。
 
-2. **玩家管理**
-   - 設定暱稱（開始後鎖定）
-   - 上傳圖片（批量上傳，自動壓縮）
-   - Ready 狀態管理
+### 重整後無法同名加入（重連機制，B12）
 
-3. **遊戲流程**
-   - 輪流選主講者
-   - 系統抽取 3 真圖 + 1 假圖（快速模式：2 真 + 1 假）
-   - 主講者講述圖片
-   - 其他玩家投票（10 秒倒數）
-   - 自動計分與結算
+Session 遺失時，同名 `join` 會被擋。房間頁可選擇**重連原座位**（`POST /rooms/reconnect`，以 `playerId`／暱稱認領）；瀏覽器也會以 localStorage 輔助記住座位。
 
-4. **積分系統**
-   - 主講者：最高分 = ceil(玩家數 × 0.5)
-   - 投票者：投中 +1，投錯 0，未投票 -1
+### 投票逾時房主不在也卡住？（自動結算，B10）
 
-5. **即時同步**
-   - WebSocket 即時推送房間狀態
-   - 投票狀態即時更新
-   - 斷線重連處理
+投票逾時後伺服器會自動 reveal，約 **4 秒**後自動 `finishRound` 計分並廣播，不依賴房主在線。房主若提前手動結束會取消自動排程，避免重複計分。
 
-## API 文件
+### 下一輪誰可以開？（B8）
 
-### 房間相關
+「進行下一輪」可由**當前回合主講者或房主**開啟，不必一定是房主。
 
-- `POST /api/rooms` - 創建房間
-- `POST /api/rooms/join` - 加入房間
-- `GET /api/rooms/{roomId}` - 獲取房間資訊
-- `GET /api/rooms/code/{roomCode}` - 根據代碼獲取房間
-- `POST /api/rooms/{roomId}/players/{playerId}/ready` - 玩家準備
-- `POST /api/rooms/{roomId}/host/{hostId}/start` - 開始遊戲
+### 選假圖失敗沒反應？（B13）
 
-### 圖片相關
+選題／抓圖失敗時前端會以 **toast**（及畫面上錯誤訊息）提示，可重試；不會靜默失敗。
 
-- `POST /api/images/players/{playerId}/upload` - 上傳圖片
-- `DELETE /api/images/players/{playerId}` - 刪除玩家圖片
-- `DELETE /api/images/rooms/{roomId}` - 刪除房間所有圖片
+### 其他
 
-### 遊戲相關
+- JAR 啟動請使用：`java -Dspring.profiles.active=dev -jar …`（`-D` 必須在 `-jar` 之前）
+- WebSocket 連線失敗時前端會提示「連線失敗，請重整」
+- 詳細修訂紀錄見 [BUGFIX_LOG.md](BUGFIX_LOG.md)（B1–B13 已完成）
 
-- `POST /api/game/rooms/{roomId}/rounds/start` - 開始新回合
-- `POST /api/game/rounds/{roundId}/vote` - 投票
-- `POST /api/game/rounds/{roundId}/finish` - 結束回合
+## 文件索引
 
-## WebSocket 事件
+| 文件 | 說明 |
+|------|------|
+| [QUICK_START.md](QUICK_START.md) | 3 分鐘快速開始 |
+| [啟動說明.md](啟動說明.md) | 本地啟動完整說明（正本） |
+| [啟動步驟.md](啟動步驟.md) | 已合併，轉導至上方兩份 |
+| [DEMO_GUIDE.md](DEMO_GUIDE.md) | Cloudflare Tunnel DEMO 說明 |
+| [如何分享給其他人.md](如何分享給其他人.md) | 把 Tunnel 網址分給朋友 |
+| [BUGFIX_LOG.md](BUGFIX_LOG.md) | Bug 修復與審查紀錄 |
+| [START.md](START.md) | 較完整的啟動／故障排除 |
 
-### 訂閱頻道
+## 測試沙盒 (Docker)
 
-- `/topic/room/{roomId}` - 房間狀態更新
-- `/topic/room/{roomId}/round` - 回合開始
-- `/topic/room/{roomId}/vote` - 投票狀態
-- `/topic/room/{roomId}/round-result` - 回合結果
-- `/topic/room/{roomId}/player-disconnect` - 玩家斷線
-
-### 發送訊息
-
-- `/app/room/update` - 請求房間更新
-- `/app/game/start-round` - 開始回合
-- `/app/game/vote` - 發送投票
-- `/app/game/finish-round` - 結束回合
-
-## 部署
-
-### 後端部署
-
-1. 打包應用：
-```bash
-cd backend
-mvn clean package
-```
-
-2. 執行 JAR：
-```bash
-java -jar target/bluff-master-backend-1.0.0.jar
-```
-
-### 前端部署
-
-1. 建置生產版本：
-```bash
-cd frontend
-npm run build
-```
-
-2. 部署 `dist` 目錄到靜態檔案伺服器（如 Nginx）
-
-## Cloudflare Tunnel 遠端 DEMO
-
-如果要讓其他人透過網路訪問您的本地開發伺服器進行 DEMO，可以使用 Cloudflare Tunnel。
-
-### 前置需求
-
-1. **安裝 Cloudflare Tunnel**：
-   ```bash
-   # Windows (使用 winget)
-   winget install --id Cloudflare.cloudflared
-   
-   # macOS
-   brew install cloudflare/cloudflare/cloudflared
-   
-   # Linux
-   # 參考官方文檔：https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
-   ```
-
-### 使用方式
-
-#### 方法 1: 使用完整啟動腳本（推薦）
+本機不想裝 MySQL 時，可用 Docker 起資料庫再測前後端：
 
 ```bash
-# 自動啟動後端、前端和 Cloudflare Tunnel
-start-demo-full.bat
+docker-compose up -d
 ```
 
-#### 方法 2: 手動啟動
+會啟動 `mysql:8.0`（埠 `3306`），資料庫 `bluff_master`，帳密 `root`／`root`，資料持久化在 volume `bluff_master_mysql_data`。
 
-1. **確保後端和前端已啟動**：
-   - 後端：`http://localhost:8080`
-   - 前端：`http://localhost:3000`
+一鍵（起 MySQL → 等 10 秒 → 後端 JAR／Maven → 前端）：
 
-2. **啟動 Cloudflare Tunnel**：
-   ```bash
-   # Windows
-   start-demo.bat
-   
-   # 或 PowerShell
-   .\start-demo.ps1
-   ```
+- Windows：`test-sandbox.bat`
+- Linux／macOS：`chmod +x test-sandbox.sh && ./test-sandbox.sh`
 
-3. **分享生成的 URL**：
-   Cloudflare Tunnel 會生成類似以下的 URL：
-   ```
-   https://xxxx-xxxx-xxxx.trycloudflare.com
-   ```
-   將此 URL 分享給其他人即可訪問您的本地 DEMO。
-
-### 注意事項
-
-- Cloudflare Tunnel URL 在每次啟動時會變化
-- 連接會在使用者關閉終端或中斷連接時自動關閉
-- 確保後端服務已啟動，否則前端無法正常工作
-- WebSocket 連接會通過 Cloudflare Tunnel 自動處理
-
-## 注意事項
-
-1. **GCP Storage 設定**：需要建立 GCS Bucket 並設定適當的權限
-2. **圖片清理**：系統會自動清理超過 3 小時的圖片
-3. **斷線處理**：主講者斷線會自動結束當前回合
-4. **投票超時**：10 秒內未投票會自動扣 1 分
-5. **Cloudflare Tunnel**：僅用於 DEMO，生產環境請使用正式部署方案
+測完可開：**http://localhost:3000**（後端 `http://localhost:8080/api`）。停止沙盒腳本不會刪 MySQL 容器；要停庫可執行 `docker-compose down`。
 
 ## 授權
 
 MIT License
-

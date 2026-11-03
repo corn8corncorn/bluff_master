@@ -14,8 +14,8 @@ if errorlevel 1 (
 )
 
 REM 檢查 JAR 文件是否存在
-if not exist "target\bluff-master-backend-1.0.0.jar" (
-    echo [錯誤] 未找到 JAR 文件：target\bluff-master-backend-1.0.0.jar
+if not exist "target/bluff-master-backend-1.0.0.jar" (
+    echo [錯誤] 未找到 JAR 文件：target/bluff-master-backend-1.0.0.jar
     echo [提示] 請先使用 Maven 編譯專案，或使用 IDE 編譯
     echo [提示] 或安裝 Maven 後執行: mvn clean package
     pause
@@ -28,7 +28,7 @@ echo [資訊] 使用配置文件：application-dev.yml
 echo.
 
 REM 啟動 Spring Boot（使用 dev profile）
-java -jar -Dspring.profiles.active=dev target\bluff-master-backend-1.0.0.jar
+java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar
 
 pause
 

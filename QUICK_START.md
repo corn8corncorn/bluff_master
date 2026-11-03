@@ -1,45 +1,41 @@
-# 快速啟動指南
+# 快速開始（約 3 分鐘）
 
-## 🚀 一鍵啟動（Windows）
+前置：Java 17+、Node 18+、MySQL（資料庫 `bluff_master`）。**不需要 Redis。**
 
-### 方法 1: 使用啟動腳本
+## Windows
 
-1. **啟動後端**：雙擊 `backend/start.bat`
-2. **啟動前端**：雙擊 `frontend/start.bat`（在新的命令提示字元視窗）
+雙擊專案根目錄的 `start-demo.bat`  
+（自動起後端 JAR／Maven + 前端 + Cloudflare Tunnel）
 
-### 方法 2: 使用命令列
+## Linux / macOS
 
-開啟兩個命令提示字元視窗：
-
-**視窗 1 - 後端：**
-```cmd
-cd backend
-mvn spring-boot:run
+```bash
+chmod +x start.sh
+./start.sh
 ```
 
-**視窗 2 - 前端：**
-```cmd
-cd frontend
-npm install
-npm run dev
+## 三指令版（clone 後手動）
+
+```bash
+git clone <你的-repo-URL> bluff_master && cd bluff_master
+npm install && npm --prefix frontend install
+./start.sh
 ```
 
-## 📋 啟動前檢查清單
+Windows 第三步改為雙擊 `start-demo.bat`（或 `cd backend` 後 `start.bat`，另開視窗 `cd frontend && npm run dev`）。
 
-- [ ] MySQL 已安裝並運行
-- [ ] Redis 已安裝並運行
-- [ ] Java 17+ 已安裝
-- [ ] Maven 3.6+ 已安裝
-- [ ] Node.js 18+ 已安裝
-- [ ] 資料庫 `bluff_master` 已建立
+## 驗證
 
-## ⚡ 快速驗證
+瀏覽器打開：**http://localhost:3000**  
+（本專案 Vite 埠為 3000，不是預設 5173）
 
-啟動後訪問：
-- 前端：http://localhost:3000
-- 後端 API：http://localhost:8080/api
+應看到 Bluff Master 首頁，可「建立房間／加入房間」。
 
-## 🔧 如果遇到問題
+## 失敗時看 log
 
-請查看 [START.md](START.md) 獲取詳細的故障排除指南。
+| 位置 | 怎麼看 |
+|------|--------|
+| 後端 | 跑後端的終端輸出；若有檔案則看 `backend/logs/` |
+| 前端 | 瀏覽器 DevTools → Console |
 
+更多說明見 [README.md](README.md)、[DEMO_GUIDE.md](DEMO_GUIDE.md)。

@@ -24,14 +24,11 @@ export default defineConfig({
       '.local'
     ],
     proxy: {
+      // 單一 /api 規則並開啟 ws，避免 /api 先匹配導致 /api/ws 的 ws:true 無效
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true
-      },
-      '/api/ws': {
-        target: 'http://localhost:8080',
-        ws: true,
-        changeOrigin: true
+        changeOrigin: true,
+        ws: true
       }
     }
   }

@@ -1,14 +1,22 @@
 import { defineStore } from "pinia";
 import { ref, computed, triggerRef } from "vue";
-import api from "../services/api";
+import api, { uploadApi } from "../services/api";
 import websocket from "../services/websocket";
+import { useNotification } from "../composables/useNotification";
+import {
+  FAKE_IMAGE_REGIONS,
+  FAKE_IMAGE_CATEGORIES,
+} from "../constants/fakeImageThemes";
 
 export const useGameStore = defineStore("game", () => {
+  const { error: showError } = useNotification();
   const room = ref(null);
   const currentPlayer = ref(null);
   const currentRound = ref(null);
   const connection = ref(null);
   const isRestoringPlayer = ref(false); // 標記是否正在從 session 恢復玩家身份
+  const fakeThemeRegions = ref([...FAKE_IMAGE_REGIONS]);
+  const fakeThemeCategories = ref([...FAKE_IMAGE_CATEGORIES]);
 
   const isHost = computed(() => {
     return currentPlayer.value?.isHost || false;
@@ -29,6 +37,17 @@ export const useGameStore = defineStore("game", () => {
     );
   });
 
+  function persistPlayerSeat(roomId, playerId) {
+    if (roomId && playerId && typeof localStorage !== "undefined") {
+      localStorage.setItem(`bluff_master_player_${roomId}`, playerId);
+    }
+  }
+
+  function loadPersistedPlayerId(roomId) {
+    if (!roomId || typeof localStorage === "undefined") return null;
+    return localStorage.getItem(`bluff_master_player_${roomId}`);
+  }
+
   async function createRoom(nickname, gameMode, maxPlayers) {
     const response = await api.post("/rooms", {
       nickname,
@@ -37,6 +56,7 @@ export const useGameStore = defineStore("game", () => {
     });
     room.value = response.data;
     currentPlayer.value = response.data.players.find((p) => p.isHost);
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     // Session 會自動由後端保存，不需要前端處理
     return response.data;
   }
@@ -50,7 +70,28 @@ export const useGameStore = defineStore("game", () => {
     currentPlayer.value = response.data.players.find(
       (p) => p.nickname === nickname
     );
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     // Session 會自動由後端保存，不需要前端處理
+    return response.data;
+  }
+
+  async function reconnectRoom(roomCode, nickname, roomIdHint) {
+    const roomId =
+      roomIdHint ||
+      room.value?.id ||
+      (room.value?.roomCode === roomCode ? room.value.id : null);
+    const persistedPlayerId = loadPersistedPlayerId(roomId);
+    const response = await api.post("/rooms/reconnect", {
+      roomCode,
+      nickname,
+      playerId: persistedPlayerId || undefined,
+    });
+    room.value = response.data;
+    currentPlayer.value =
+      response.data.players.find((p) => p.id === persistedPlayerId) ||
+      response.data.players.find((p) => p.nickname === nickname) ||
+      null;
+    persistPlayerSeat(room.value?.id, currentPlayer.value?.id);
     return response.data;
   }
 
@@ -117,6 +158,7 @@ export const useGameStore = defineStore("game", () => {
             foundPlayer.isHost ? "(房主)" : ""
           );
           currentPlayer.value = foundPlayer;
+          persistPlayerSeat(room.value?.id, foundPlayer.id);
         } else {
           // Session 中的玩家 ID 在房間中找不到，清除 currentPlayer
           console.warn(
@@ -190,29 +232,72 @@ export const useGameStore = defineStore("game", () => {
     room.value.status = "PLAYING";
   }
 
-  async function uploadImages(files) {
+  async function playAgain() {
+    const response = await api.post(
+      `/rooms/${room.value.id}/host/${currentPlayer.value.id}/play-again`
+    );
+    room.value = response.data;
+    currentRound.value = null;
+    if (currentPlayer.value) {
+      const updated = response.data.players?.find(
+        (p) => p.id === currentPlayer.value.id
+      );
+      if (updated) {
+        currentPlayer.value = updated;
+      }
+    }
+    return response.data;
+  }
+
+  async function uploadImages(files, onProgress) {
     if (!currentPlayer.value || !currentPlayer.value.id) {
       throw new Error("玩家資訊未載入，請重新整理頁面");
     }
 
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append("files", file);
-    });
-    const response = await api.post(
-      `/images/players/${currentPlayer.value.id}/upload`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+    const uploadedUrls = []
+    const total = files.length
+
+    for (let i = 0; i < files.length; i++) {
+      onProgress?.({ phase: 'upload', current: i + 1, total })
+
+      const formData = new FormData()
+      formData.append('files', files[i])
+
+      const response = await uploadApi.post(
+        `/images/players/${currentPlayer.value.id}/upload`,
+        formData
+      )
+
+      const urls = response.data || []
+      uploadedUrls.push(...urls)
+
+      if (!currentPlayer.value.imageUrls) {
+        currentPlayer.value.imageUrls = []
       }
-    );
-    if (!currentPlayer.value.imageUrls) {
-      currentPlayer.value.imageUrls = [];
+      currentPlayer.value.imageUrls = [...currentPlayer.value.imageUrls, ...urls]
+      triggerRef(currentPlayer)
+
+      // 同步房間玩家列表中的圖片數量（讓自己與其他人即時看到）
+      if (room.value?.players) {
+        const playerInRoom = room.value.players.find(
+          (p) => p.id === currentPlayer.value.id
+        )
+        if (playerInRoom) {
+          playerInRoom.imageUrls = [...(playerInRoom.imageUrls || []), ...urls]
+          room.value = {
+            ...room.value,
+            players: room.value.players.map((p) =>
+              p.id === currentPlayer.value.id
+                ? { ...p, imageUrls: [...(p.imageUrls || []), ...urls] }
+                : p
+            ),
+          }
+          triggerRef(room)
+        }
+      }
     }
-    currentPlayer.value.imageUrls.push(...response.data);
-    return response.data;
+
+    return uploadedUrls
   }
 
   async function deleteImage(imageUrl) {
@@ -241,7 +326,15 @@ export const useGameStore = defineStore("game", () => {
   }
 
   async function connectWebSocket(roomId, playerId) {
-    connection.value = await websocket.connect(roomId, playerId, {
+    if (connection.value?.connected) {
+      await markPlayerOnline(playerId);
+      await fetchRoom(roomId);
+      return connection.value;
+    }
+
+    let client;
+    try {
+      client = await websocket.connect(roomId, playerId, {
       onRoomUpdate: (updatedRoom) => {
         // 保存之前的玩家列表（用於檢測新玩家）
         const previousPlayerIds = room.value?.players?.map((p) => p.id) || [];
@@ -368,97 +461,10 @@ export const useGameStore = defineStore("game", () => {
         }
       },
       onRoundStart: (round) => {
-        console.log("=== onRoundStart: 收到回合更新 ===", {
-          roundId: round?.id,
-          roundNumber: round?.roundNumber,
-          phase: round?.phase,
-          speakerId: round?.speakerId,
-          speakerNickname: round?.speakerNickname,
-          isFinished: round?.isFinished,
-          round: round,
-        });
-
-        // 如果 round 沒有 speakerNickname，嘗試從房間玩家列表中獲取
-        if (!round.speakerNickname && round.speakerId && room.value?.players) {
-          // 嘗試精確匹配
-          let speaker = room.value.players.find(
-            (p) => p.id === round.speakerId
-          );
-
-          // 如果精確匹配失敗，嘗試字符串匹配
-          if (!speaker) {
-            speaker = room.value.players.find(
-              (p) => String(p.id) === String(round.speakerId)
-            );
-          }
-
-          if (speaker) {
-            round.speakerNickname = speaker.nickname;
-            console.log(
-              "onRoundStart: 從房間玩家列表獲取主講者暱稱:",
-              speaker.nickname
-            );
-          } else {
-            console.warn("onRoundStart: 無法在房間玩家列表中找到主講者", {
-              speakerId: round.speakerId,
-              speakerIdType: typeof round.speakerId,
-              playersIds: room.value.players.map((p) => ({
-                id: p.id,
-                idType: typeof p.id,
-                nickname: p.nickname,
-              })),
-            });
-          }
-        }
-
-        // 記錄舊階段以便比較
-        const oldPhase = currentRound.value?.phase;
-        const oldRoundId = currentRound.value?.id;
-
-        // 強制創建新對象以確保 Vue 響應式系統檢測到變化
-        // 每次更新都創建全新的對象引用，確保響應式系統檢測到變化
-        const newRound = {
-          id: round.id,
-          roomId: round.roomId,
-          roundNumber: round.roundNumber,
-          speakerId: round.speakerId,
-          speakerNickname: round.speakerNickname || null,
-          imageUrls: round.imageUrls ? [...round.imageUrls] : [],
-          fakeImageUrl: round.fakeImageUrl || null,
-          speakerFakeImageUrl: round.speakerFakeImageUrl || null,
-          phase: round.phase || null,
-          votes: round.votes ? { ...round.votes } : {},
-          isFinished: round.isFinished || false,
-          votingTimeLeft: round.votingTimeLeft || null,
-          voteResults: round.voteResults ? { ...round.voteResults } : null,
-        };
-
-        // 無論是否為同一回合，都直接替換整個對象以確保響應式更新
-        // 這樣可以確保 Vue 檢測到所有屬性的變化，包括 phase
-        currentRound.value = newRound;
-
-        // 強制觸發響應式更新（確保所有依賴 currentRound 的 computed 和 watch 都能觸發）
-        triggerRef(currentRound);
-
-        console.log("onRoundStart: 已更新 currentRound", {
-          oldRoundId,
-          newRoundId: round.id,
-          oldPhase: oldPhase,
-          newPhase: round.phase,
-          phase: currentRound.value?.phase,
-          isFinished: currentRound.value?.isFinished,
-          currentRoundRef: currentRound.value,
-        });
-
-        // 當新回合開始時，重新獲取房間信息以確保回合數和玩家資訊是最新的
-        if (room.value && room.value.id) {
-          fetchRoom(room.value.id).catch((error) => {
-            console.error("onRoundStart: 重新獲取房間信息失敗:", error);
-          });
-        }
+        applyRoundUpdate(round);
       },
       onVoteUpdate: (voteStatus) => {
-        if (currentRound.value) {
+        if (currentRound.value && voteStatus.playerId !== currentRound.value.speakerId) {
           currentRound.value.votes = {
             ...currentRound.value.votes,
             [voteStatus.playerId]: voteStatus.imageUrl,
@@ -482,11 +488,16 @@ export const useGameStore = defineStore("game", () => {
           speakerNickname: round.speakerNickname || null,
           imageUrls: round.imageUrls ? [...round.imageUrls] : [],
           fakeImageUrl: round.fakeImageUrl || null,
+          fakeImageRegion: round.fakeImageRegion || null,
+          fakeImageCategory: round.fakeImageCategory || null,
+          fakeThemeSelected: round.fakeThemeSelected || false,
+          fakeThemeLabel: round.fakeThemeLabel || null,
           speakerFakeImageUrl: round.speakerFakeImageUrl || null,
           phase: round.phase || null,
           votes: round.votes ? { ...round.votes } : {},
           isFinished: round.isFinished || false,
-          votingTimeLeft: round.votingTimeLeft || null,
+          votingTimeLeft: round.votingTimeLeft ?? null,
+          votingEndsAt: round.votingEndsAt || null,
           voteResults: round.voteResults ? { ...round.voteResults } : null,
         };
 
@@ -505,12 +516,95 @@ export const useGameStore = defineStore("game", () => {
         }
       },
       onPlayerDisconnect: (playerId) => {
-        const player = room.value.players.find((p) => p.id === playerId);
-        if (player) {
-          player.isOnline = false;
-        }
+        if (!room.value?.players) return;
+        room.value = {
+          ...room.value,
+          players: room.value.players.map((p) =>
+            p.id === playerId ? { ...p, isOnline: false } : p
+          ),
+        };
+        triggerRef(room);
       },
-    });
+      onError: (errorPayload) => {
+        const action = errorPayload?.action;
+        const forMe =
+          !errorPayload?.playerId ||
+          !currentPlayer.value?.id ||
+          String(errorPayload.playerId) === String(currentPlayer.value.id);
+        if (!forMe) return;
+
+        const message =
+          errorPayload?.message ||
+          (action === "select-fake-theme"
+            ? "選題失敗請重試"
+            : "操作失敗，請重試");
+        console.error("WebSocket 錯誤:", errorPayload);
+        showError(message);
+      },
+      });
+    } catch (error) {
+      connection.value = null;
+      console.error("connectWebSocket: 連線失敗", error);
+      throw error;
+    }
+
+    connection.value = client;
+    await markPlayerOnline(playerId);
+    await fetchRoom(roomId);
+    return connection.value;
+  }
+
+  async function markPlayerOnline(playerId) {
+    if (!playerId) return;
+    try {
+      await api.post(`/game/players/${playerId}/reconnect`);
+    } catch (error) {
+      console.warn("markPlayerOnline: 失敗", error);
+    }
+  }
+
+  function applyRoundUpdate(round) {
+    if (!round) return;
+
+    if (!round.speakerNickname && round.speakerId && room.value?.players) {
+      let speaker = room.value.players.find((p) => p.id === round.speakerId);
+      if (!speaker) {
+        speaker = room.value.players.find(
+          (p) => String(p.id) === String(round.speakerId)
+        );
+      }
+      if (speaker) {
+        round.speakerNickname = speaker.nickname;
+      }
+    }
+
+    currentRound.value = {
+      id: round.id,
+      roomId: round.roomId,
+      roundNumber: round.roundNumber,
+      speakerId: round.speakerId,
+      speakerNickname: round.speakerNickname || null,
+      imageUrls: round.imageUrls ? [...round.imageUrls] : [],
+      fakeImageUrl: round.fakeImageUrl || null,
+      fakeImageRegion: round.fakeImageRegion || null,
+      fakeImageCategory: round.fakeImageCategory || null,
+      fakeThemeSelected: round.fakeThemeSelected || false,
+      fakeThemeLabel: round.fakeThemeLabel || null,
+      speakerFakeImageUrl: round.speakerFakeImageUrl || null,
+      phase: round.phase || null,
+      votes: round.votes ? { ...round.votes } : {},
+      isFinished: round.isFinished || false,
+      votingTimeLeft: round.votingTimeLeft ?? null,
+      votingEndsAt: round.votingEndsAt || null,
+      voteResults: round.voteResults ? { ...round.voteResults } : null,
+    };
+    triggerRef(currentRound);
+
+    if (room.value?.id) {
+      fetchRoom(room.value.id).catch((error) => {
+        console.error("applyRoundUpdate: 重新獲取房間信息失敗:", error);
+      });
+    }
   }
 
   function disconnectWebSocket() {
@@ -531,23 +625,27 @@ export const useGameStore = defineStore("game", () => {
     }
   }
 
-  function startRound() {
-    console.log("startRound: 準備開始回合", {
-      hasConnection: !!connection.value,
-      connectionConnected: connection.value?.connected,
-      roomId: room.value?.id,
-    });
+  async function startRound() {
+    if (!room.value?.id) {
+      console.error("startRound: 沒有房間 ID");
+      return null;
+    }
 
-    if (connection.value && connection.value.connected) {
-      websocket.sendStartRound(connection.value, {
-        roomId: room.value.id,
-      });
-      console.log("startRound: WebSocket 消息已發送");
-    } else {
-      console.error("startRound: WebSocket 未連接", {
-        hasConnection: !!connection.value,
-        connectionConnected: connection.value?.connected,
-      });
+    try {
+      const response = await api.post(
+        `/game/rooms/${room.value.id}/rounds/start`
+      );
+      applyRoundUpdate(response.data);
+      return response.data;
+    } catch (error) {
+      console.error("startRound: REST 啟動失敗，嘗試 WebSocket", error);
+      if (connection.value?.connected) {
+        websocket.sendStartRound(connection.value, {
+          roomId: room.value.id,
+          playerId: currentPlayer.value?.id,
+        });
+      }
+      throw error;
     }
   }
 
@@ -578,6 +676,7 @@ export const useGameStore = defineStore("game", () => {
     try {
       websocket.sendNextPhase(connection.value, {
         roundId: currentRound.value.id,
+        playerId: currentPlayer.value?.id,
       });
       console.log("nextPhase: WebSocket 消息已發送", {
         roundId: currentRound.value.id,
@@ -614,6 +713,7 @@ export const useGameStore = defineStore("game", () => {
     try {
       websocket.sendStartVoting(connection.value, {
         roundId: currentRound.value.id,
+        playerId: currentPlayer.value?.id,
       });
       console.log("startVoting: WebSocket 消息已發送", {
         roundId: currentRound.value.id,
@@ -623,10 +723,57 @@ export const useGameStore = defineStore("game", () => {
     }
   }
 
+  async function selectFakeTheme(region, category) {
+    if (!currentRound.value?.id) {
+      throw new Error("沒有當前回合");
+    }
+    if (!currentPlayer.value?.id) {
+      throw new Error("玩家資訊未載入");
+    }
+
+    const regionAllowed = fakeThemeRegions.value.some((r) => r.id === region);
+    const categoryAllowed = fakeThemeCategories.value.some((c) => c.id === category);
+    if (!regionAllowed || !categoryAllowed) {
+      const err = new Error("此主題已棄用或不存在，請重新選擇");
+      showError(err.message);
+      throw err;
+    }
+
+    try {
+      const response = await api.post(
+        `/game/rounds/${currentRound.value.id}/select-fake-theme`,
+        null,
+        {
+          params: {
+            region,
+            category,
+            playerId: currentPlayer.value.id,
+          },
+          timeout: 90000,
+        }
+      );
+      applyRoundUpdate(response.data);
+      return response.data;
+    } catch (error) {
+      console.error("selectFakeTheme: REST 失敗，嘗試 WebSocket", error);
+      if (connection.value?.connected) {
+        websocket.sendSelectFakeTheme(connection.value, {
+          roundId: currentRound.value.id,
+          playerId: currentPlayer.value.id,
+          roomId: room.value?.id || currentRound.value.roomId,
+          region,
+          category,
+        });
+      }
+      throw error;
+    }
+  }
+
   function revealResult() {
     if (connection.value && currentRound.value) {
       websocket.sendRevealResult(connection.value, {
         roundId: currentRound.value.id,
+        playerId: currentPlayer.value?.id,
       });
     }
   }
@@ -635,7 +782,22 @@ export const useGameStore = defineStore("game", () => {
     if (connection.value && currentRound.value) {
       websocket.sendFinishRound(connection.value, {
         roundId: currentRound.value.id,
+        playerId: currentPlayer.value?.id,
       });
+    }
+  }
+
+  async function fetchFakeThemeOptions() {
+    try {
+      const response = await api.get("/game/fake-theme-options");
+      if (response.data?.regions?.length) {
+        fakeThemeRegions.value = response.data.regions;
+      }
+      if (response.data?.categories?.length) {
+        fakeThemeCategories.value = response.data.categories;
+      }
+    } catch (error) {
+      console.warn("載入假圖主題選項失敗，使用預設列表", error);
     }
   }
 
@@ -653,13 +815,17 @@ export const useGameStore = defineStore("game", () => {
     isHost,
     allPlayersReady,
     canStartGame,
+    fakeThemeRegions,
+    fakeThemeCategories,
     createRoom,
     joinRoom,
+    reconnectRoom,
     fetchRoom,
     leaveRoom,
     setReady,
     cancelReady,
     startGame,
+    playAgain,
     uploadImages,
     deleteImage,
     connectWebSocket,
@@ -668,9 +834,11 @@ export const useGameStore = defineStore("game", () => {
     startRound,
     nextPhase,
     startVoting,
+    selectFakeTheme,
     revealResult,
     finishRound,
     fetchCurrentRound,
+    fetchFakeThemeOptions,
     reset,
     connection,
   };

@@ -25,9 +25,9 @@ if errorlevel 1 (
 echo [資訊] 啟動後端服務（使用 dev profile）...
 cd backend
 REM 優先使用 JAR 啟動（不需要 Maven），如果 JAR 不存在則使用 Maven
-if exist "target\bluff-master-backend-1.0.0.jar" (
+if exist "target/bluff-master-backend-1.0.0.jar" (
     echo [資訊] 使用已編譯的 JAR 文件啟動...
-    start "Bluff Master Backend" cmd /k "java -jar -Dspring.profiles.active=dev target\bluff-master-backend-1.0.0.jar"
+    start "Bluff Master Backend" cmd /k "java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar"
 ) else (
     echo [資訊] JAR 文件不存在，嘗試使用 Maven 啟動...
     start "Bluff Master Backend" cmd /k "mvn spring-boot:run -Dspring-boot.run.profiles=dev"

@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 
 REM 檢查是否有 JAR 文件
-if exist "target\bluff-master-backend-1.0.0.jar" (
+if exist "target/bluff-master-backend-1.0.0.jar" (
     echo [資訊] 發現已編譯的 JAR 文件，將直接運行...
     echo [資訊] 正在啟動後端服務（使用 dev profile）...
     echo [資訊] 後端將在 http://localhost:8080 啟動
@@ -22,7 +22,7 @@ if exist "target\bluff-master-backend-1.0.0.jar" (
     echo.
     
     REM 直接運行 JAR（使用 dev profile）
-    java -jar -Dspring.profiles.active=dev target\bluff-master-backend-1.0.0.jar
+    java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar
     goto :end
 )
 

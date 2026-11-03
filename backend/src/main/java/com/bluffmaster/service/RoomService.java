@@ -7,6 +7,7 @@ import com.bluffmaster.repository.PlayerRepository;
 import com.bluffmaster.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,9 @@ public class RoomService {
     private final PlayerRepository playerRepository;
     private final ImageService imageService;
     private final SecureRandom random = new SecureRandom();
+
+    @Value("${game.min-players:2}")
+    private int minPlayers;
 
     @Transactional
     public RoomDTO createRoom(CreateRoomRequest request) {
@@ -66,6 +70,11 @@ public class RoomService {
 
     @Transactional
     public RoomDTO joinRoom(JoinRoomRequest request) {
+        return joinRoom(request, null);
+    }
+
+    @Transactional
+    public RoomDTO joinRoom(JoinRoomRequest request, String sessionPlayerId) {
         Room room = roomRepository.findByRoomCode(request.getRoomCode())
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
 
@@ -73,15 +82,24 @@ public class RoomService {
             throw new RuntimeException("遊戲已開始，無法加入");
         }
 
-        if (room.getPlayerIds().size() >= room.getMaxPlayers()) {
-            throw new RuntimeException("房間已滿");
+        // 同名且 session 仍是該玩家 → 視為重連原座位，不報錯
+        Player existingByNickname = playerRepository.findByRoomId(room.getId()).stream()
+                .filter(p -> p.getNickname().equals(request.getNickname()))
+                .findFirst()
+                .orElse(null);
+        if (existingByNickname != null) {
+            if (sessionPlayerId != null && sessionPlayerId.equals(existingByNickname.getId())) {
+                existingByNickname.setIsOnline(true);
+                playerRepository.save(existingByNickname);
+                log.info("joinRoom: session 認領原座位 playerId={}, roomId={}",
+                        existingByNickname.getId(), room.getId());
+                return convertToDTO(room, existingByNickname.getId());
+            }
+            throw new RuntimeException("暱稱已被使用");
         }
 
-        // 檢查暱稱是否重複
-        boolean nicknameExists = playerRepository.findByRoomId(room.getId()).stream()
-                .anyMatch(p -> p.getNickname().equals(request.getNickname()));
-        if (nicknameExists) {
-            throw new RuntimeException("暱稱已被使用");
+        if (room.getPlayerIds().size() >= room.getMaxPlayers()) {
+            throw new RuntimeException("房間已滿");
         }
 
         // 創建玩家
@@ -100,13 +118,38 @@ public class RoomService {
         room.getPlayerIds().add(player.getId());
         room = roomRepository.save(room);
 
-        RoomDTO roomDTO = convertToDTO(room, null);
-        
-        // 通過 WebSocket 廣播房間更新（通知其他玩家有新玩家加入）
-        // 注意：這裡需要注入 SimpMessagingTemplate，但為了避免循環依賴，
-        // 我們在 Controller 層處理 WebSocket 廣播
-        
-        return roomDTO;
+        return convertToDTO(room, null);
+    }
+
+    /**
+     * 以 playerId（優先）或暱稱認領房間內既有座位，用於重整後 session 遺失的重連。
+     */
+    @Transactional
+    public RoomDTO reconnectSeat(ReconnectRoomRequest request) {
+        Room room = roomRepository.findByRoomCode(request.getRoomCode())
+                .orElseThrow(() -> new RuntimeException("房間不存在"));
+
+        Player player = null;
+        String requestedPlayerId = request.getPlayerId();
+        if (requestedPlayerId != null && !requestedPlayerId.isBlank()) {
+            player = playerRepository.findById(requestedPlayerId).orElse(null);
+            if (player != null && !room.getId().equals(player.getRoomId())) {
+                player = null;
+            }
+        }
+
+        if (player == null) {
+            player = playerRepository.findByRoomId(room.getId()).stream()
+                    .filter(p -> p.getNickname().equals(request.getNickname()))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("找不到該暱稱的座位，無法重連"));
+        }
+
+        player.setIsOnline(true);
+        playerRepository.save(player);
+        log.info("reconnectSeat: 已認領座位 playerId={}, nickname={}, roomId={}",
+                player.getId(), player.getNickname(), room.getId());
+        return convertToDTO(room, player.getId());
     }
 
     @Transactional
@@ -275,8 +318,8 @@ public class RoomService {
 
         List<Player> players = playerRepository.findByRoomId(room.getId());
         
-        if (players.size() < 2) {
-            throw new RuntimeException("至少需要 2 人才能開始遊戲");
+        if (players.size() < minPlayers) {
+            throw new RuntimeException("至少需要 " + minPlayers + " 人才能開始遊戲");
         }
 
         // 檢查所有玩家是否都準備好
@@ -287,9 +330,9 @@ public class RoomService {
 
         // 檢查圖片上傳數量
         for (Player player : players) {
-            int requiredImages = room.getGameMode() == Room.GameMode.NORMAL 
-                    ? room.getMaxPlayers() + 2 
-                    : 5;
+            int requiredImages = room.getGameMode() == Room.GameMode.NORMAL
+                    ? room.getMaxPlayers() + 2
+                    : 3;
             
             if (player.getImageUrls() == null || player.getImageUrls().size() < requiredImages) {
                 throw new RuntimeException("玩家 " + player.getNickname() + " 圖片數量不足");
@@ -301,6 +344,39 @@ public class RoomService {
         roomRepository.save(room);
     }
 
+    @Transactional
+    public RoomDTO playAgain(String hostId) {
+        Player host = playerRepository.findById(hostId)
+                .orElseThrow(() -> new RuntimeException("房主不存在"));
+
+        if (!host.getIsHost()) {
+            throw new RuntimeException("只有房主可以再玩一局");
+        }
+
+        Room room = roomRepository.findById(host.getRoomId())
+                .orElseThrow(() -> new RuntimeException("房間不存在"));
+
+        if (room.getStatus() != Room.RoomStatus.FINISHED) {
+            throw new RuntimeException("遊戲尚未結束，無法再玩一局");
+        }
+
+        List<Player> players = playerRepository.findByRoomId(room.getId());
+        for (Player player : players) {
+            player.setScore(0);
+            player.setIsReady(false);
+        }
+        playerRepository.saveAll(players);
+
+        room.setStatus(Room.RoomStatus.WAITING);
+        room.setCurrentRound(0);
+        room.setStartedAt(null);
+        roomRepository.save(room);
+
+        String hostIdForDto = host.getId();
+        return convertToDTO(room, hostIdForDto);
+    }
+
+    @Transactional(readOnly = true)
     public RoomDTO getRoom(String roomId) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
@@ -314,6 +390,7 @@ public class RoomService {
         return convertToDTO(room, hostId);
     }
 
+    @Transactional(readOnly = true)
     public RoomDTO getRoomByCode(String roomCode) {
         Room room = roomRepository.findByRoomCode(roomCode)
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
@@ -368,7 +445,9 @@ public class RoomService {
                 .isHost(player.getIsHost())
                 .isReady(player.getIsReady())
                 .score(player.getScore())
-                .imageUrls(player.getImageUrls())
+                .imageUrls(player.getImageUrls() != null
+                        ? new ArrayList<>(player.getImageUrls())
+                        : new ArrayList<>())
                 .isOnline(player.getIsOnline())
                 .build();
     }

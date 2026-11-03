@@ -1,8 +1,13 @@
 package com.bluffmaster.controller;
 
+import com.bluffmaster.dto.RoomDTO;
+import com.bluffmaster.model.Player;
+import com.bluffmaster.repository.PlayerRepository;
 import com.bluffmaster.service.ImageService;
+import com.bluffmaster.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,6 +19,9 @@ import java.util.List;
 public class ImageController {
 
     private final ImageService imageService;
+    private final RoomService roomService;
+    private final PlayerRepository playerRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @PostMapping("/players/{playerId}/upload")
     public ResponseEntity<List<String>> uploadImages(
@@ -21,9 +29,15 @@ public class ImageController {
             @RequestParam("files") List<MultipartFile> files) {
         try {
             List<String> imageUrls = imageService.uploadImages(playerId, files);
+
+            Player player = playerRepository.findById(playerId).orElse(null);
+            if (player != null) {
+                RoomDTO room = roomService.getRoom(player.getRoomId());
+                messagingTemplate.convertAndSend("/topic/room/" + player.getRoomId(), room);
+            }
+
             return ResponseEntity.ok(imageUrls);
         } catch (Exception e) {
-            // 讓 GlobalExceptionHandler 處理異常，這樣可以返回更詳細的錯誤信息
             throw new RuntimeException("上傳圖片失敗: " + e.getMessage(), e);
         }
     }
@@ -31,6 +45,7 @@ public class ImageController {
     @DeleteMapping("/players/{playerId}")
     public ResponseEntity<Void> deletePlayerImages(@PathVariable String playerId) {
         imageService.deletePlayerImages(playerId);
+        broadcastRoom(playerId);
         return ResponseEntity.ok().build();
     }
 
@@ -40,6 +55,7 @@ public class ImageController {
             @RequestParam("imageUrl") String imageUrl) {
         try {
             imageService.deletePlayerImage(playerId, imageUrl);
+            broadcastRoom(playerId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             throw new RuntimeException("刪除圖片失敗: " + e.getMessage(), e);
@@ -49,7 +65,15 @@ public class ImageController {
     @DeleteMapping("/rooms/{roomId}")
     public ResponseEntity<Void> deleteRoomImages(@PathVariable String roomId) {
         imageService.deleteRoomImages(roomId);
+        RoomDTO room = roomService.getRoom(roomId);
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, room);
         return ResponseEntity.ok().build();
     }
-}
 
+    private void broadcastRoom(String playerId) {
+        playerRepository.findById(playerId).ifPresent(player -> {
+            RoomDTO room = roomService.getRoom(player.getRoomId());
+            messagingTemplate.convertAndSend("/topic/room/" + player.getRoomId(), room);
+        });
+    }
+}

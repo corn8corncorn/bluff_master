@@ -29,7 +29,7 @@
       </div>
 
       <div class="mt-6 sm:mt-8 text-center text-xs sm:text-sm text-gray-500">
-        <p>適合 4-10 人的派對遊戲</p>
+        <p>適合 2-10 人的派對遊戲</p>
         <p class="mt-2">露營、民宿、聚會的最佳選擇</p>
       </div>
     </div>

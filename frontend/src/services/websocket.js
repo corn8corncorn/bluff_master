@@ -28,7 +28,7 @@ async function connect(roomId, playerId, callbacks) {
 
     return new Promise((resolve, reject) => {
       stompClient.connect(
-        {},
+        { playerId: playerId || '', roomId: roomId || '' },
         () => {
           console.log("WebSocket 連接成功");
 
@@ -77,18 +77,38 @@ async function connect(roomId, playerId, callbacks) {
             }
           );
 
+          // 訂閱錯誤頻道（選假圖等失敗回饋）
+          stompClient.subscribe("/topic/errors", (message) => {
+            try {
+              const errorPayload = JSON.parse(message.body);
+              if (
+                errorPayload?.roomId &&
+                String(errorPayload.roomId) !== String(roomId)
+              ) {
+                return;
+              }
+              callbacks.onError?.(errorPayload);
+            } catch (error) {
+              console.error("解析錯誤訊息失敗:", error, message.body);
+              callbacks.onError?.({
+                success: false,
+                message: "選題失敗請重試",
+              });
+            }
+          });
+
           // 連接成功後 resolve
           resolve(stompClient);
         },
         (error) => {
           console.error("WebSocket 連接失敗:", error);
-          reject(error);
+          reject(new Error("WebSocket connect failed", { cause: error }));
         }
       );
     });
   } catch (error) {
     console.error("WebSocket 初始化失敗:", error);
-    return null;
+    throw new Error("WebSocket connect failed", { cause: error });
   }
 }
 
@@ -129,6 +149,12 @@ function sendRevealResult(stompClient, payload) {
   }
 }
 
+function sendSelectFakeTheme(stompClient, payload) {
+  if (stompClient && stompClient.connected) {
+    stompClient.send("/app/game/select-fake-theme", {}, JSON.stringify(payload));
+  }
+}
+
 function sendFinishRound(stompClient, payload) {
   if (stompClient && stompClient.connected) {
     stompClient.send("/app/game/finish-round", {}, JSON.stringify(payload));
@@ -143,5 +169,6 @@ export default {
   sendNextPhase,
   sendStartVoting,
   sendRevealResult,
+  sendSelectFakeTheme,
   sendFinishRound,
 };

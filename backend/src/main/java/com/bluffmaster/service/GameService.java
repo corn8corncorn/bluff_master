@@ -1,7 +1,10 @@
 package com.bluffmaster.service;
 
+import com.bluffmaster.dto.FakeThemeOptionsDTO;
 import com.bluffmaster.dto.GameRoundDTO;
 import com.bluffmaster.dto.VoteResult;
+import com.bluffmaster.model.FakeImageCategory;
+import com.bluffmaster.model.FakeImageRegion;
 import com.bluffmaster.model.GameRound;
 import com.bluffmaster.model.Player;
 import com.bluffmaster.model.Room;
@@ -17,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,12 +34,24 @@ public class GameService {
     private final PlayerRepository playerRepository;
     private final GameRoundRepository gameRoundRepository;
     private final ImageService imageService;
+    private final FakeImageService fakeImageService;
+    private final GameRoundMutationService gameRoundMutationService;
+    private final AutoFinishRoundScheduler autoFinishRoundScheduler;
 
-    @Value("${game.fake-image-url}")
-    private String fakeImageUrl;
+    @Value("${game.voting-timeout:10}")
+    private int votingTimeoutSeconds;
 
     @Transactional
-    public GameRoundDTO startRound(String roomId) {
+    public GameRoundDTO startRound(String roomId, String actorPlayerId) {
+        // 第一輪僅房主；之後允許「當前回合主講者」或房主開下一輪（對齊 Game.vue）
+        Optional<GameRound> latestRound = gameRoundRepository.findByRoomId(roomId).stream()
+                .max(Comparator.comparingInt(GameRound::getRoundNumber));
+        if (latestRound.isPresent()) {
+            requireSpeakerOrHost(latestRound.get(), actorPlayerId);
+        } else {
+            requireHost(roomId, actorPlayerId);
+        }
+
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
 
@@ -56,40 +73,29 @@ public class GameService {
         Player speaker = playerRepository.findById(speakerId)
                 .orElseThrow(() -> new RuntimeException("主講者不存在"));
 
+        int realImageCount = room.getGameMode() == Room.GameMode.QUICK ? 2 : 3;
+
         // 檢查主講者是否有足夠的圖片
-        if (speaker.getImageUrls() == null || speaker.getImageUrls().size() < 3) {
-            throw new RuntimeException("主講者需要至少上傳 3 張圖片");
+        if (speaker.getImageUrls() == null || speaker.getImageUrls().size() < realImageCount) {
+            throw new RuntimeException("主講者需要至少上傳 " + realImageCount + " 張圖片");
         }
 
-        // 從主講者的圖片中隨機選3張
+        // 從主講者的圖片中隨機選取
         List<String> speakerImages = new ArrayList<>(speaker.getImageUrls());
         Collections.shuffle(speakerImages);
         List<String> selectedImages = new ArrayList<>();
-        
-        // 選擇3張主講者的圖片
-        for (int i = 0; i < 3; i++) {
+
+        for (int i = 0; i < realImageCount; i++) {
             selectedImages.add(speakerImages.get(i));
         }
 
-        // 生成隨機假圖 URL（使用時間戳和回合數確保每個回合的假圖都不同）
-        // 改用 picsum.photos 的 seed API：同一 seed 會得到同一張圖片，且服務會保證圖片存在
-        // 這樣可避免出現 "Image does not exist" 的無效 URL，同時確保所有玩家看到相同的假圖
-        long uniqueSeed = System.currentTimeMillis() + room.getCurrentRound() * 1000000L;
-        // seed 不能包含特殊字元，使用唯一 seed 確保每輪都不同，但同輪一致
-        String fixedFakeImageUrl = String.format("https://picsum.photos/seed/%d/800/600", uniqueSeed);
-        log.info("生成假圖 URL (seed: {}): {}", uniqueSeed, fixedFakeImageUrl);
-        
-        // 添加1張假圖（非所有玩家的圖片）
-        selectedImages.add(fixedFakeImageUrl);
-        Collections.shuffle(selectedImages);
-
-        // 創建回合
+        // 假圖由主講者在講故事階段選擇地區+類別後再插入
         GameRound round = GameRound.builder()
                 .roomId(roomId)
                 .roundNumber(room.getCurrentRound() + 1)
                 .speakerId(speakerId)
                 .imageUrls(selectedImages)
-                .fakeImageUrl(fixedFakeImageUrl)  // 使用固定的假圖 URL
+                .fakeImageUrl(null)
                 .phase(GameRound.RoundPhase.STORY_TELLING)
                 .isFinished(false)
                 .build();
@@ -114,6 +120,15 @@ public class GameService {
         return null;
     }
 
+    public String findRoomIdByRoundId(String roundId) {
+        if (roundId == null || roundId.isBlank()) {
+            return null;
+        }
+        return gameRoundRepository.findById(roundId)
+                .map(GameRound::getRoomId)
+                .orElse(null);
+    }
+
     @Transactional
     public void vote(String playerId, String imageUrl, String roundId) {
         GameRound round = gameRoundRepository.findById(roundId)
@@ -127,6 +142,10 @@ public class GameService {
             throw new RuntimeException("當前階段不能投票");
         }
 
+        if (isVotingExpired(round)) {
+            throw new RuntimeException("投票時間已結束");
+        }
+
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("玩家不存在"));
 
@@ -134,31 +153,27 @@ public class GameService {
             throw new RuntimeException("玩家不在該房間");
         }
 
-        // 如果是主講者，選擇說謊圖片
+        // 如果是主講者，不能投票（假圖由系統指定）
         if (round.getSpeakerId().equals(playerId)) {
-            // 檢查圖片是否在主講者的圖片中
-            Player speaker = playerRepository.findById(round.getSpeakerId())
-                    .orElseThrow(() -> new RuntimeException("主講者不存在"));
-            if (!speaker.getImageUrls().contains(imageUrl)) {
-                throw new RuntimeException("無效的圖片選項");
-            }
-            round.setSpeakerFakeImageUrl(imageUrl);
-        } else {
-            // 其他玩家投票
-            // 檢查圖片是否在選項中
-            if (!round.getImageUrls().contains(imageUrl)) {
-                throw new RuntimeException("無效的圖片選項");
-            }
-            round.getVotes().put(playerId, imageUrl);
+            throw new RuntimeException("主講者不能投票");
         }
+
+        // 其他玩家投票
+        // 檢查圖片是否在選項中
+        if (!round.getImageUrls().contains(imageUrl)) {
+            throw new RuntimeException("無效的圖片選項");
+        }
+        round.getVotes().put(playerId, imageUrl);
 
         gameRoundRepository.save(round);
     }
 
     @Transactional
-    public GameRoundDTO startVoting(String roundId) {
+    public GameRoundDTO startVoting(String roundId, String actorPlayerId) {
         GameRound round = gameRoundRepository.findById(roundId)
                 .orElseThrow(() -> new RuntimeException("回合不存在"));
+
+        requireSpeaker(round, actorPlayerId);
 
         if (round.getIsFinished()) {
             throw new RuntimeException("回合已結束");
@@ -169,6 +184,7 @@ public class GameService {
         }
 
         round.setPhase(GameRound.RoundPhase.VOTING);
+        round.setVotingEndsAt(Instant.now().plusSeconds(votingTimeoutSeconds));
         round = gameRoundRepository.save(round);
 
         // 強制加載懶加載的集合，避免 LazyInitializationException
@@ -185,12 +201,11 @@ public class GameService {
     }
 
     @Transactional
-    public GameRoundDTO revealResult(String roundId) {
+    public GameRoundDTO revealResult(String roundId, String actorPlayerId) {
         GameRound round = gameRoundRepository.findById(roundId)
                 .orElseThrow(() -> new RuntimeException("回合不存在"));
 
         if (round.getIsFinished()) {
-            // 強制加載懶加載的集合
             if (round.getImageUrls() != null) {
                 round.getImageUrls().size();
             }
@@ -202,6 +217,13 @@ public class GameService {
 
         if (round.getPhase() != GameRound.RoundPhase.VOTING) {
             throw new RuntimeException("當前階段不能公布結果");
+        }
+
+        boolean votingExpired = isVotingExpired(round);
+        if (actorPlayerId != null) {
+            requireSpeakerOrHost(round, actorPlayerId);
+        } else if (!votingExpired) {
+            throw new RuntimeException("投票尚未結束");
         }
 
         round.setPhase(GameRound.RoundPhase.REVEALING);
@@ -221,10 +243,11 @@ public class GameService {
         Player speaker = playerRepository.findById(round.getSpeakerId())
                 .orElseThrow(() -> new RuntimeException("主講者不存在"));
 
-        // 計算投票結果（但不保存分數，只是用於顯示）
-        String correctFakeImage = round.getSpeakerFakeImageUrl() != null 
-                ? round.getSpeakerFakeImageUrl() 
-                : round.getFakeImageUrl();
+        // 系統假圖為正確答案
+        String correctFakeImage = round.getFakeImageUrl();
+        if (correctFakeImage == null || correctFakeImage.isBlank()) {
+            throw new RuntimeException("假圖尚未設定");
+        }
         
         int voters = players.size() - 1; // 排除主講者
         int correctVotes = 0;
@@ -284,8 +307,8 @@ public class GameService {
         VoteResult speakerResult = VoteResult.builder()
                 .playerId(speaker.getId())
                 .playerNickname(speaker.getNickname())
-                .votedImageUrl(round.getSpeakerFakeImageUrl())
-                .isCorrect(true)  // 主講者選擇的圖片就是正確答案
+                .votedImageUrl(null)
+                .isCorrect(false)
                 .scoreChange(speakerScore)
                 .isSpeaker(true)
                 .build();
@@ -293,13 +316,22 @@ public class GameService {
 
         GameRoundDTO dto = convertToDTO(round, speaker.getNickname());
         dto.setVoteResults(voteResults);
+        // 逾時／手動 reveal 後皆排程自動計分，避免房主離線卡在 REVEALING
+        autoFinishRoundScheduler.scheduleAfterReveal(round.getId(), round.getRoomId());
         return dto;
     }
 
     @Transactional
-    public GameRoundDTO finishRound(String roundId) {
+    public GameRoundDTO finishRound(String roundId, String actorPlayerId) {
+        // 房主若提前手動 finish，取消自動任務以避免重複計分
+        autoFinishRoundScheduler.cancel(roundId);
+
         GameRound round = gameRoundRepository.findById(roundId)
                 .orElseThrow(() -> new RuntimeException("回合不存在"));
+
+        if (actorPlayerId != null) {
+            requireHost(round.getRoomId(), actorPlayerId);
+        }
 
         if (round.getIsFinished()) {
             return convertToDTO(round, null);
@@ -312,10 +344,11 @@ public class GameService {
         Player speaker = playerRepository.findById(round.getSpeakerId())
                 .orElseThrow(() -> new RuntimeException("主講者不存在"));
 
-        // 使用主講者選擇的說謊圖片作為正確答案
-        String correctFakeImage = round.getSpeakerFakeImageUrl() != null 
-                ? round.getSpeakerFakeImageUrl() 
-                : round.getFakeImageUrl();
+        // 系統假圖為正確答案
+        String correctFakeImage = round.getFakeImageUrl();
+        if (correctFakeImage == null || correctFakeImage.isBlank()) {
+            throw new RuntimeException("假圖尚未設定");
+        }
 
         // 計算分數並記錄每個玩家的投票結果
         int voters = players.size() - 1; // 排除主講者
@@ -382,8 +415,8 @@ public class GameService {
         VoteResult speakerResult = VoteResult.builder()
                 .playerId(speaker.getId())
                 .playerNickname(speaker.getNickname())
-                .votedImageUrl(round.getSpeakerFakeImageUrl())
-                .isCorrect(true)  // 主講者選擇的圖片就是正確答案
+                .votedImageUrl(null)
+                .isCorrect(false)
                 .scoreChange(speakerScore)
                 .isSpeaker(true)
                 .build();
@@ -418,13 +451,43 @@ public class GameService {
         Room room = roomRepository.findById(player.getRoomId())
                 .orElseThrow(() -> new RuntimeException("房間不存在"));
 
-        // 如果主講者斷線，自動結束當前回合
+        // 如果主講者斷線：已選假圖則計分結束；尚未選假圖則中止回合，避免 finishRound 丟錯卡死
         if (room.getStatus() == Room.RoomStatus.PLAYING) {
             Optional<GameRound> currentRound = gameRoundRepository.findByRoomIdAndIsFinishedFalse(room.getId());
             if (currentRound.isPresent() && currentRound.get().getSpeakerId().equals(playerId)) {
-                finishRound(currentRound.get().getId());
+                GameRound round = currentRound.get();
+                String fakeImageUrl = round.getFakeImageUrl();
+                if (fakeImageUrl == null || fakeImageUrl.isBlank()) {
+                    abortRoundWithoutScoring(round);
+                } else {
+                    finishRound(round.getId(), null);
+                }
             }
         }
+    }
+
+    /**
+     * 中止尚未選假圖的回合（不計分），並回退房間回合數，讓房主／下一位可重新 startRound。
+     */
+    private void abortRoundWithoutScoring(GameRound round) {
+        autoFinishRoundScheduler.cancel(round.getId());
+
+        if (Boolean.TRUE.equals(round.getIsFinished())) {
+            return;
+        }
+
+        round.setPhase(GameRound.RoundPhase.FINISHED);
+        round.setIsFinished(true);
+        gameRoundRepository.save(round);
+
+        Room room = roomRepository.findById(round.getRoomId()).orElse(null);
+        if (room != null && round.getRoundNumber().equals(room.getCurrentRound())) {
+            room.setCurrentRound(Math.max(0, room.getCurrentRound() - 1));
+            roomRepository.save(room);
+        }
+
+        log.info("主講者斷線且尚未選假圖，已中止回合: roomId={}, roundId={}",
+                round.getRoomId(), round.getId());
     }
 
     @Transactional
@@ -457,20 +520,59 @@ public class GameService {
         return sortedPlayers.get(roundIndex).getId();
     }
 
-    private List<String> collectAllImages(List<Player> players, String excludePlayerId) {
-        List<String> allImages = new ArrayList<>();
-        for (Player player : players) {
-            if (!player.getId().equals(excludePlayerId) && player.getImageUrls() != null) {
-                allImages.addAll(player.getImageUrls());
-            }
+    public GameRoundDTO selectFakeTheme(String roundId, String regionId, String categoryId, String actorPlayerId) {
+        GameRound round = gameRoundRepository.findById(roundId)
+                .orElseThrow(() -> new RuntimeException("回合不存在"));
+
+        requireSpeaker(round, actorPlayerId);
+
+        if (round.getIsFinished()) {
+            throw new RuntimeException("回合已結束");
         }
-        return allImages;
+
+        if (round.getPhase() != GameRound.RoundPhase.STORY_TELLING) {
+            throw new RuntimeException("只能在講故事階段選擇假圖主題");
+        }
+
+        if (round.getFakeImageUrl() != null && !round.getFakeImageUrl().isBlank()) {
+            throw new RuntimeException("假圖主題已選擇");
+        }
+
+        if (regionId == null || regionId.isBlank() || categoryId == null || categoryId.isBlank()) {
+            throw new RuntimeException("無效的主題選項，請重新選擇");
+        }
+
+        FakeImageRegion region;
+        FakeImageCategory category;
+        try {
+            region = FakeImageRegion.valueOf(regionId.trim());
+            category = FakeImageCategory.valueOf(categoryId.trim());
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("主題不存在或已棄用，請重新選擇");
+        }
+
+        if (!region.isSelectable()) {
+            throw new RuntimeException("此主題已棄用，請重新選擇");
+        }
+
+        // 網路抓圖在交易外執行，避免長時間佔用 DB 連線導致逾時
+        String fakeUrl = fakeImageService.pickRandom(region, category);
+
+        log.info("主講者選擇假圖主題: {} -> {}", fakeImageService.getThemeLabel(region, category), fakeUrl);
+        return gameRoundMutationService.applyFakeThemeAndBuildDto(
+                roundId, region, category, fakeUrl, actorPlayerId);
+    }
+
+    public FakeThemeOptionsDTO getFakeThemeOptions() {
+        return fakeImageService.getThemeOptions();
     }
 
     @Transactional
-    public GameRoundDTO nextPhase(String roundId) {
+    public GameRoundDTO nextPhase(String roundId, String actorPlayerId) {
         GameRound round = gameRoundRepository.findById(roundId)
                 .orElseThrow(() -> new RuntimeException("回合不存在"));
+
+        requireSpeaker(round, actorPlayerId);
 
         if (round.getIsFinished()) {
             throw new RuntimeException("回合已結束");
@@ -479,6 +581,9 @@ public class GameService {
         // 階段轉換：STORY_TELLING -> QUESTIONING -> VOTING
         switch (round.getPhase()) {
             case STORY_TELLING:
+                if (round.getFakeImageUrl() == null || round.getFakeImageUrl().isBlank()) {
+                    throw new RuntimeException("請先選擇假圖的地區與類別");
+                }
                 round.setPhase(GameRound.RoundPhase.QUESTIONING);
                 break;
             case QUESTIONING:
@@ -504,6 +609,66 @@ public class GameService {
         Player speaker = playerRepository.findById(round.getSpeakerId())
                 .orElseThrow(() -> new RuntimeException("主講者不存在"));
         return convertToDTO(round, speaker.getNickname());
+    }
+
+    @Transactional
+    public List<GameRoundDTO> revealExpiredVotingRounds() {
+        List<GameRound> expiredRounds = gameRoundRepository
+                .findByPhaseAndIsFinishedFalseAndVotingEndsAtBefore(
+                        GameRound.RoundPhase.VOTING, Instant.now());
+
+        List<GameRoundDTO> results = new ArrayList<>();
+        for (GameRound round : expiredRounds) {
+            try {
+                results.add(revealResult(round.getId(), null));
+            } catch (Exception e) {
+                log.warn("自動公布投票結果失敗: roundId={}", round.getId(), e);
+            }
+        }
+        return results;
+    }
+
+    private boolean isVotingExpired(GameRound round) {
+        return round.getVotingEndsAt() != null
+                && Instant.now().isAfter(round.getVotingEndsAt());
+    }
+
+    private Player requirePlayer(String playerId) {
+        if (playerId == null || playerId.isBlank()) {
+            throw new RuntimeException("缺少玩家身份");
+        }
+        return playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("玩家不存在"));
+    }
+
+    private void requireHost(String roomId, String playerId) {
+        Player player = requirePlayer(playerId);
+        if (!player.getRoomId().equals(roomId)) {
+            throw new RuntimeException("玩家不在該房間");
+        }
+        if (!Boolean.TRUE.equals(player.getIsHost())) {
+            throw new RuntimeException("只有房主可以執行此操作");
+        }
+    }
+
+    private void requireSpeaker(GameRound round, String playerId) {
+        Player player = requirePlayer(playerId);
+        if (!player.getRoomId().equals(round.getRoomId())) {
+            throw new RuntimeException("玩家不在該房間");
+        }
+        if (!round.getSpeakerId().equals(playerId)) {
+            throw new RuntimeException("只有主講者可以執行此操作");
+        }
+    }
+
+    private void requireSpeakerOrHost(GameRound round, String playerId) {
+        Player player = requirePlayer(playerId);
+        if (!player.getRoomId().equals(round.getRoomId())) {
+            throw new RuntimeException("玩家不在該房間");
+        }
+        if (!round.getSpeakerId().equals(playerId) && !Boolean.TRUE.equals(player.getIsHost())) {
+            throw new RuntimeException("只有主講者或房主可以執行此操作");
+        }
     }
 
     /**
@@ -602,7 +767,13 @@ public class GameService {
     }
 
     private GameRoundDTO convertToDTO(GameRound round, String speakerNickname) {
-        return GameRoundDTO.builder()
+        boolean themeSelected = round.getFakeImageUrl() != null && !round.getFakeImageUrl().isBlank();
+        String themeLabel = null;
+        if (round.getFakeImageRegion() != null && round.getFakeImageCategory() != null) {
+            themeLabel = fakeImageService.getThemeLabel(round.getFakeImageRegion(), round.getFakeImageCategory());
+        }
+
+        GameRoundDTO.GameRoundDTOBuilder builder = GameRoundDTO.builder()
                 .id(round.getId())
                 .roomId(round.getRoomId())
                 .roundNumber(round.getRoundNumber())
@@ -610,11 +781,22 @@ public class GameService {
                 .speakerNickname(speakerNickname)
                 .imageUrls(round.getImageUrls())
                 .fakeImageUrl(round.getFakeImageUrl())
+                .fakeImageRegion(round.getFakeImageRegion())
+                .fakeImageCategory(round.getFakeImageCategory())
+                .fakeThemeSelected(themeSelected)
+                .fakeThemeLabel(themeLabel)
                 .speakerFakeImageUrl(round.getSpeakerFakeImageUrl())
                 .phase(round.getPhase())
                 .votes(round.getVotes())
                 .isFinished(round.getIsFinished())
-                .build();
+                .votingEndsAt(round.getVotingEndsAt());
+
+        if (round.getPhase() == GameRound.RoundPhase.VOTING && round.getVotingEndsAt() != null) {
+            long secondsLeft = ChronoUnit.SECONDS.between(Instant.now(), round.getVotingEndsAt());
+            builder.votingTimeLeft((int) Math.max(0, secondsLeft));
+        }
+
+        return builder.build();
     }
 }
 

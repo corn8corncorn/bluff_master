@@ -29,6 +29,12 @@ spring:
         max-idle: 8
         min-idle: 0
 
+  # 程式未使用 Redis；排除 auto-config，避免未安裝 Redis 時無法啟動（與 application-dev.yml 一致）
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
   servlet:
     multipart:
       max-file-size: 100MB # 單個文件最大大小（允許上傳大圖片，後續會自動壓縮）
@@ -65,14 +71,21 @@ gcp:
 # Game Configuration
 game:
   max-players: 10
-  min-players: 4
+  min-players: 2
   max-image-size: 5242880 # 5MB in bytes
   image-compression:
     min-width: 720
     max-width: 1080
   voting-timeout: 10 # seconds
   room-timeout: 10800 # 3 hours in seconds
-  fake-image-url: ${FAKE_IMAGE_URL:https://picsum.photos/800/600}
+  fake-image-url: ${FAKE_IMAGE_URL:/api/images/fake/stock_01.jpg}
+  fake-image:
+    enable-openverse: true
+    enable-wikimedia: true
+    enable-unsplash: true
+    enable-lorem-flickr: true
+    unsplash-access-key: ${UNSPLASH_ACCESS_KEY:}
+    fetch-timeout-ms: 30000
 
 logging:
   level:
