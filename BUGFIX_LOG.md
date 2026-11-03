@@ -16,7 +16,7 @@
 | B2 | High | `backend/start.sh` | 無 JAR 後備；與 bat 不一致 | ✅ 已修 |
 | B3 | Medium | 啟動 bat 腳本 | JAR 路徑使用 `\` | ✅ 已修 |
 | B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | ✅ 已修 |
-| B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | 預設 exclude Redis（與 dev 一致） |
+| B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | ✅ 已修 |
 | B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
 | B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
 | B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | 允許 speaker 或 host，或 UI 只給房主 |
@@ -77,4 +77,11 @@
   1. `start-demo.bat` 對齊 `start-demo-full.bat`：自動啟動後端（JAR 或 Maven）再前端與 Tunnel
   2. 新增根目錄 `start.sh`（後端 + 前端 + Tunnel，路徑 `/`；註解說明 `chmod +x start.sh`）
   3. 新增根目錄 `package.json`；前後端 scripts 以 `cross-env` 設定 `NODE_ENV`（原先無 `set NODE_ENV=`）
+- **狀態**：已完成
+
+### 2026-11-03 — B5 預設 profile 排除 Redis auto-config
+
+- **改哪裡**：`backend/src/main/resources/application.yml`
+- **為什麼**：預設會啟用 Redis 自動設定，但程式未使用 Redis，未安裝 Redis 時啟動易失敗
+- **怎麼改**：參考 `application-dev.yml`，加上 `spring.autoconfigure.exclude` 排除 `RedisAutoConfiguration` 與 `RedisRepositoriesAutoConfiguration`；dev／default 皆不需 Redis
 - **狀態**：已完成

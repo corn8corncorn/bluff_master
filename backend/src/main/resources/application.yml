@@ -29,6 +29,12 @@ spring:
         max-idle: 8
         min-idle: 0
 
+  # 程式未使用 Redis；排除 auto-config，避免未安裝 Redis 時無法啟動（與 application-dev.yml 一致）
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
   servlet:
     multipart:
       max-file-size: 100MB # 單個文件最大大小（允許上傳大圖片，後續會自動壓縮）
