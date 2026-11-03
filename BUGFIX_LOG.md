@@ -1,0 +1,63 @@
+# Bluff Master BUGFIX Log
+
+工作原則：每次只改一小範圍；不確定項只列清單不直接修；路徑用 `/`；環境變數用 `cross-env`。
+
+補充審查來源：[Explore bugs](1c241b9b-f3f9-4822-86d4-5942bcbe3372)（2026-11-03）
+
+---
+
+## 審查清單（2026-11-03）
+
+### Confirmed（已確認，可依序小範圍修復）
+
+| ID | 嚴重度 | 位置 | 問題 | 建議修法（單點） |
+|----|--------|------|------|------------------|
+| B1 | High | `frontend/vite.config.js` | Proxy `/api` 未開 `ws: true` | ✅ 已修 |
+| B2 | High | `backend/start.sh` | 無 JAR 後備；與 bat 不一致 | 有 JAR 則 `java -D... -jar`，否則 `mvn` |
+| B3 | Medium | 啟動 bat 腳本 | JAR 路徑使用 `\` | ✅ 已修 |
+| B4 | High | 專案根目錄 | 無 Linux 一鍵、未用 `cross-env`；`start-demo.bat` 不啟動後端 | 根目錄 `start.sh` + 對齊 full 腳本 |
+| B5 | High | `application.yml` | 預設啟用 Redis，程式未用 | 預設 exclude Redis（與 dev 一致） |
+| B6 | Medium | `websocket.js` / `game.js` | `connect()` 失敗回傳 `null`，後續靜默失敗 | 改為 throw + 呼叫端處理 |
+| B7 | Critical | `start.bat` / `start-jar.bat` / `start-demo-full.bat` | `-D` 放在 `-jar` 之後，dev profile 不生效 | ✅ 已修：`java -Dspring.profiles.active=dev -jar ...` |
+| B8 | Critical | `GameService.startRound` vs `Game.vue` | UI 讓主講者開下一輪，後端 `requireHost` → 非房主主講者失敗 | 允許 speaker 或 host，或 UI 只給房主 |
+| B9 | High | `GameService` 斷線處理 | 主講者斷線呼叫 `finishRound`，若尚無假圖會丟錯，回合卡住 | 未選假圖時改 abort/cancel |
+| B10 | High | `VotingTimeoutScheduler` + `finishRound` | 逾時只 reveal；計分需房主 `finishRound`，房主離線會卡在 REVEALING | 伺服器 reveal 後自動 finish |
+| B11 | High | `votingEndsAt` LocalDateTime | 無時區；跨區 DEMO 倒數錯位 | 改 Instant / 帶 `Z` / epoch ms |
+| B12 | Medium | `Room.vue` 重新加入 | `join` 拒同名；session 遺失無法重連原座位 | 提供 claim/reconnect API |
+| B13 | Medium | `WebSocketController.selectFakeTheme` | catch 只 log，WS 備援無錯誤回饋 | 錯誤頻道或回傳失敗 |
+
+### Uncertain（不確定，先不修）
+
+| ID | 嚴重度 | 位置 | 疑點 | 待驗證 |
+|----|--------|------|------|--------|
+| U1 | Medium | `game.js` upload `Content-Type: multipart/form-data` | 可能缺 boundary；Axios 1.x 多半會覆寫 | 實機上傳是否偶發失敗 |
+| U2 | Low | `joinRoom` 用 nickname 找玩家 | 後端已擋同名時風險低 | 回應是否應帶 playerId |
+| U3 | Low | `/round` vs `/round-result` | 語意分裂但兩邊都能更新 UI | 是否刻意 |
+| U4 | Low | REST `next-phase` 等不廣播 WS | 目前前端走 WS；純 REST 客戶會不同步 | 是否要統一廣播 |
+| U5 | Low | `application-dev.yml` 硬編碼密碼 | 不利跨機；屬設定/安全 | 改 `${DB_PASSWORD:...}` |
+
+---
+
+## 修復紀錄
+
+### 2026-11-03 — B1 Vite proxy WebSocket
+
+- **改哪裡**：`frontend/vite.config.js` 的 `server.proxy`
+- **為什麼**：`/api` 先匹配且無 `ws: true`，SockJS/STOMP 升級易失敗
+- **怎麼改**：單一 `/api` proxy + `ws: true`
+- **狀態**：已完成
+
+### 2026-11-03 — B3 啟動腳本路徑改用 /
+
+- **改哪裡**：`backend/start.bat`、`backend/start-jar.bat`、`start-demo-full.bat`
+- **為什麼**：路徑規範一律 `/`
+- **怎麼改**：`target\...` → `target/...`
+- **狀態**：已完成
+
+### 2026-11-03 — B7 JVM `-D` 必須在 `-jar` 之前
+
+- **改哪裡**：同上三支 bat + `backend/README_啟動說明.md`
+- **為什麼**：`java -jar -Dspring.profiles.active=dev ...` 會把 `-D` 當成程式參數，dev profile 不載入（錯密碼／誤連 Redis）
+- **怎麼改**：`java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar`
+- **來源**：[Explore bugs](1c241b9b-f3f9-4822-86d4-5942bcbe3372)
+- **狀態**：已完成

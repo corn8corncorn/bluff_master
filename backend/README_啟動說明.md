@@ -11,7 +11,7 @@ start-jar.bat
 
 或手動執行：
 ```cmd
-java -jar -Dspring.profiles.active=dev target\bluff-master-backend-1.0.0.jar
+java -Dspring.profiles.active=dev -jar target/bluff-master-backend-1.0.0.jar
 ```
 
 ## 使用 Maven 啟動
