@@ -145,8 +145,11 @@ Session 遺失時，同名 `join` 會被擋。房間頁可選擇**重連原座�
 
 | 文件 | 說明 |
 |------|------|
-| [QUICK_START.md](QUICK_START.md) | 快速啟動檢查清單 |
+| [QUICK_START.md](QUICK_START.md) | 3 分鐘快速開始 |
+| [啟動說明.md](啟動說明.md) | 本地啟動完整說明（正本） |
+| [啟動步驟.md](啟動步驟.md) | 已合併，轉導至上方兩份 |
 | [DEMO_GUIDE.md](DEMO_GUIDE.md) | Cloudflare Tunnel DEMO 說明 |
+| [如何分享給其他人.md](如何分享給其他人.md) | 把 Tunnel 網址分給朋友 |
 | [BUGFIX_LOG.md](BUGFIX_LOG.md) | Bug 修復與審查紀錄 |
 | [START.md](START.md) | 較完整的啟動／故障排除 |
 
